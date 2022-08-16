@@ -1,7 +1,8 @@
 package io.metersphere.api.parse;
 
 import io.metersphere.commons.utils.LogUtil;
-import io.metersphere.commons.utils.ScriptEngineUtils;
+import io.metersphere.commons.utils.XMLUtils;
+import io.metersphere.jmeter.utils.ScriptEngineUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -32,6 +33,7 @@ public class JmeterDocumentParser {
     public static byte[] parse(byte[] source) {
 
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        XMLUtils.setExpandEntityReferencesFalse(factory);
         try (
                 ByteArrayInputStream byteStream = new ByteArrayInputStream(source)
         ) {
@@ -154,15 +156,15 @@ public class JmeterDocumentParser {
                     if (!StringUtils.equals("?", u)) {
                         u += "&";
                     }
-                    u += k + "=" + ScriptEngineUtils.calculate(v);
+                    u += k + "=" + ScriptEngineUtils.buildFunctionCallString(v);
                     return u;
                 });
-                ele.setTextContent(url + ((params != null && !params.equals("?")) ? params : ""));
+                ele.setTextContent(url + ((params != null && !"?".equals(params)) ? params : ""));
                 break;
             case "Argument.value":
                 String textContent = ele.getTextContent();
                 if (StringUtils.startsWith(textContent, "@")) {
-                    ele.setTextContent(ScriptEngineUtils.calculate(textContent));
+                    ele.setTextContent(ScriptEngineUtils.buildFunctionCallString(textContent));
                 }
                 break;
             default:

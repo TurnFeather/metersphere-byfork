@@ -19,6 +19,12 @@ public class TestCaseReview implements Serializable {
 
     private Long endTime;
 
+    private String projectId;
+
+    private String tags;
+
+    private String createUser;
+
     private String description;
 
     private static final long serialVersionUID = 1L;

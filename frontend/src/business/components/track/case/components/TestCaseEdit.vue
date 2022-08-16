@@ -1,280 +1,251 @@
 <template>
+  <el-card>
+    <div class="card-content">
+      <div class="ms-main-div" @click="showAll">
 
-  <div>
+        <!--操作按钮-->
+        <div class="ms-opt-btn">
+          <el-tooltip :content="$t('commons.follow')" placement="bottom" effect="dark" v-if="!showFollow">
+            <i class="el-icon-star-off"
+               style="color: #783987; font-size: 25px;  margin-right: 15px;cursor: pointer;position: relative;top: 5px "
+               @click="saveFollow"/>
+          </el-tooltip>
+          <el-tooltip :content="$t('commons.cancel')" placement="bottom" effect="dark" v-if="showFollow">
+            <i class="el-icon-star-on"
+               style="color: #783987; font-size: 28px; margin-right: 15px;cursor: pointer;position: relative;top: 5px "
+               @click="saveFollow"/>
+          </el-tooltip>
+          <el-link type="primary" style="margin-right: 20px" @click="openHis" v-if="form.id">
+            {{ $t('operating_log.change_history') }}
+          </el-link>
+          <!--  版本历史 -->
+          <ms-version-history v-xpack
+                              ref="versionHistory"
+                              :version-data="versionData"
+                              :current-id="currentTestCaseInfo.id"
+                              :is-read="currentTestCaseInfo.trashEnable"
+                              @confirmOtherInfo="confirmOtherInfo"
+                              :current-project-id="currentProjectId"
+                              @compare="compare" @checkout="checkout" @create="create" @del="del"/>
+          <el-dropdown split-button type="primary" class="ms-api-buttion" @click="handleCommand"
+                       @command="handleCommand" size="small" style="float: right;margin-right: 20px" :disabled="readOnly">
+            {{ $t('commons.save') }}
+            <el-dropdown-menu slot="dropdown">
+              <el-dropdown-item command="ADD_AND_CREATE" v-if="this.path =='/test/case/add'">{{
+                  $t('test_track.case.save_create_continue')
+                }}
+              </el-dropdown-item>
+              <el-dropdown-item command="ADD_AND_PUBLIC" v-if="this.isPublic && this.isXpack">{{
+                  $t('test_track.case.save_add_public')
+                }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </el-dropdown>
+        </div>
+        <el-form :model="form" :rules="rules" ref="caseFrom" v-loading="result.loading" class="case-form">
+          <ms-form-divider :title="$t('test_track.plan_view.base_info')"/>
+          <el-row>
+            <el-col :span="8">
+              <el-form-item
+                :placeholder="$t('test_track.case.input_name')"
+                :label="$t('test_track.case.name')"
+                :label-width="formLabelWidth"
+                prop="name">
+                <el-input :disabled="readOnly" v-model="form.name" size="small" class="ms-case-input"></el-input>
+              </el-form-item>
+            </el-col>
 
-    <el-dialog :close-on-click-modal="false"
-               @close="close"
-               :title="operationType == 'edit' ? ( readOnly ? $t('test_track.case.view_case') : $t('test_track.case.edit_case')) : $t('test_track.case.create')"
-               :visible.sync="dialogFormVisible" width="65%">
+            <el-col :span="8">
+              <el-form-item :label="$t('test_track.case.module')" :label-width="formLabelWidth" prop="module"
+                            v-if="!publicEnable">
+                <ms-select-tree :disabled="readOnly" :data="treeNodes" :defaultKey="form.module" :obj="moduleObj"
+                                @getValue="setModule" clearable checkStrictly size="small"/>
+              </el-form-item>
+            </el-col>
 
-      <el-form :model="form" :rules="rules" ref="caseFrom" v-loading="result.loading">
+            <el-col :span="8">
+              <el-form-item :label="$t('test_track.case.project')" :label-width="formLabelWidth" prop="projectId"
+                            v-if="publicEnable">
+                <el-select v-model="form.projectId" filterable clearable>
+                  <el-option v-for="item in projectList" :key="item.id" :label="item.name" :value="item.id"></el-option>
+                </el-select>
+              </el-form-item>
+            </el-col>
 
-        <el-row>
-          <el-col :span="8" :offset="1">
-            <el-form-item
-              :placeholder="$t('test_track.case.input_name')"
-              :label="$t('test_track.case.name')"
-              :label-width="formLabelWidth"
-              prop="name">
-              <el-input class="case-name" :disabled="readOnly" v-model="form.name"></el-input>
-            </el-form-item>
-          </el-col>
+            <el-col :span="8">
+              <el-form-item :label="$t('commons.tag')" :label-width="formLabelWidth" prop="tags">
+                <ms-input-tag :read-only="readOnly" :currentScenario="form" v-if="showInputTag" ref="tag"
+                              class="ms-case-input"></ms-input-tag>
+              </el-form-item>
+            </el-col>
+          </el-row>
 
-          <el-col :span="11" :offset="2">
-            <el-form-item :label="$t('test_track.case.module')" :label-width="formLabelWidth" prop="module">
-              <el-select
-                v-model="form.module"
-                :disabled="readOnly"
-                :placeholder="$t('test_track.case.input_module')"
-                filterable>
-                <el-option
-                  v-for="item in moduleOptions"
-                  :key="item.id"
-                  :label="item.path"
-                  :value="item.id">
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
+          <!-- 自定义字段 -->
+          <el-form v-if="isFormAlive" :model="customFieldForm" :rules="customFieldRules" ref="customFieldForm"
+                   class="case-form">
+            <custom-filed-form-item :form="customFieldForm" :form-label-width="formLabelWidth"
+                                    :issue-template="testCaseTemplate"/>
+          </el-form>
 
-        <el-row>
-          <el-col :span="10" :offset="1">
-            <el-form-item :label="$t('test_track.case.maintainer')" :label-width="formLabelWidth" prop="maintainer">
-              <el-select :disabled="readOnly" v-model="form.maintainer"
-                         :placeholder="$t('test_track.case.input_maintainer')" filterable>
-                <el-option
-                  v-for="item in maintainerOptions"
-                  :key="item.id"
-                  :label="item.id + ' (' + item.name + ')'"
-                  :value="item.id">
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item :label="$t('test_track.case.priority')" :label-width="formLabelWidth" prop="priority">
-              <el-select :disabled="readOnly" v-model="form.priority" clearable
-                         :placeholder="$t('test_track.case.input_priority')">
-                <el-option label="P0" value="P0"></el-option>
-                <el-option label="P1" value="P1"></el-option>
-                <el-option label="P2" value="P2"></el-option>
-                <el-option label="P3" value="P3"></el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
+          <el-row v-if="isCustomNum">
+            <el-col :span="7">
+              <el-form-item label="ID" :label-width="formLabelWidth" prop="customNum">
+                <el-input :disabled="readOnly" v-model.trim="form.customNum" size="small"
+                          class="ms-case-input"></el-input>
+              </el-form-item>
+            </el-col>
+          </el-row>
 
-        <el-row>
-          <el-col :span="10" :offset="1">
-            <el-form-item :label="$t('test_track.case.type')" :label-width="formLabelWidth" prop="type">
-              <el-select @change="typeChange" :disabled="readOnly" v-model="form.type"
-                         :placeholder="$t('test_track.case.input_type')">
-                <el-option :label="$t('commons.functional')" value="functional"></el-option>
-                <el-option :label="$t('commons.performance')" value="performance"></el-option>
-                <el-option :label="$t('commons.api')" value="api"></el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item :label="$t('test_track.case.method')" :label-width="formLabelWidth" prop="method">
-              <el-select :disabled="readOnly" v-model="form.method" :placeholder="$t('test_track.case.input_method')">
-                <el-option
-                  v-for="item in methodOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value">
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
 
-        <el-row v-if="form.method && form.method == 'auto'">
-          <el-col :span="9" :offset="1">
-            <el-form-item :label="$t('test_track.case.relate_test')" :label-width="formLabelWidth" prop="testId">
-              <el-select filterable :disabled="readOnly" v-model="form.testId"
-                         :placeholder="$t('test_track.case.input_type')">
-                <el-option
-                  v-for="item in testOptions"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id">
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="9" :offset="1" v-if="form.testId=='other'">
-            <el-form-item :label="$t('test_track.case.test_name')" :label-width="formLabelWidth" prop="testId">
-              <el-input v-model="form.otherTestName" :placeholder="$t('test_track.case.input_test_case')"></el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row style="margin-top: 15px;">
-          <el-col :offset="2">{{ $t('test_track.case.prerequisite') }}:</el-col>
-        </el-row>
-        <el-row type="flex" justify="center" style="margin-top: 10px;">
-          <el-col :span="20">
-            <el-form-item prop="prerequisite">
-              <el-input :disabled="readOnly" v-model="form.prerequisite"
-                        type="textarea"
-                        :autosize="{ minRows: 2, maxRows: 4}"
-                        :rows="2"
-                        :placeholder="$t('test_track.case.input_prerequisite')"></el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
+          <ms-form-divider :title="$t('test_track.case.step_info')"/>
 
-        <el-row v-if="form.method && form.method != 'auto'" style="margin-bottom: 10px">
-          <el-col :offset="2">{{ $t('test_track.case.steps') }}:</el-col>
-        </el-row>
+          <form-rich-text-item :disabled="readOnly" :label-width="formLabelWidth"
+                               :title="$t('test_track.case.prerequisite')" :data="form" prop="prerequisite"/>
 
-        <el-row v-if="form.method && form.method != 'auto'" type="flex" justify="center">
-          <el-col :span="20">
-            <el-table
-              v-if="isStepTableAlive"
-              :data="form.steps"
-              class="tb-edit"
-              border
-              size="mini"
-              :default-sort="{prop: 'num', order: 'ascending'}"
-              highlight-current-row>
-              <el-table-column :label="$t('test_track.case.number')" prop="num" min-width="10%"></el-table-column>
-              <el-table-column :label="$t('test_track.case.step_desc')" prop="desc" min-width="35%">
-                <template v-slot:default="scope">
-                  <el-input
-                    class="table-edit-input"
-                    size="mini"
-                    :disabled="readOnly"
-                    type="textarea"
-                    :autosize="{ minRows: 1, maxRows: 6}"
-                    :rows="2"
-                    v-model="scope.row.desc"
-                    :placeholder="$t('commons.input_content')"
-                    clearable/>
-                </template>
-              </el-table-column>
-              <el-table-column :label="$t('test_track.case.expected_results')" prop="result" min-width="35%">
-                <template v-slot:default="scope">
-                  <el-input
-                    class="table-edit-input"
-                    size="mini"
-                    :disabled="readOnly"
-                    type="textarea"
-                    :autosize="{ minRows: 1, maxRows: 6}"
-                    :rows="2"
-                    v-model="scope.row.result"
-                    :placeholder="$t('commons.input_content')"
-                    clearable/>
-                </template>
-              </el-table-column>
-              <el-table-column :label="$t('commons.input_content')" min-width="20%">
-                <template v-slot:default="scope">
-                  <el-button
-                    type="primary"
-                    :disabled="readOnly"
-                    icon="el-icon-plus"
-                    circle size="mini"
-                    @click="handleAddStep(scope.$index, scope.row)"></el-button>
-                  <el-button
-                    icon="el-icon-document-copy"
-                    type="success"
-                    :disabled="readOnly"
-                    circle size="mini"
-                    @click="handleCopyStep(scope.$index, scope.row)"></el-button>
-                  <el-button
-                    type="danger"
-                    icon="el-icon-delete"
-                    circle size="mini"
-                    @click="handleDeleteStep(scope.$index, scope.row)"
-                    :disabled="readOnly || (scope.$index == 0 && form.steps.length <= 1)"></el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-col>
-        </el-row>
+          <step-change-item :label-width="formLabelWidth" :form="form"/>
+          <form-rich-text-item :disabled="readOnly" :label-width="formLabelWidth" v-if="form.stepModel === 'TEXT'"
+                               :title="$t('test_track.case.step_desc')" :data="form" prop="stepDescription"/>
+          <form-rich-text-item :disabled="readOnly" :label-width="formLabelWidth" v-if="form.stepModel === 'TEXT'"
+                               :title="$t('test_track.case.expected_results')" :data="form" prop="expectedResult"/>
 
-        <el-row style="margin-top: 15px;margin-bottom: 10px">
-          <el-col :offset="2">{{ $t('commons.remark') }}:</el-col>
-        </el-row>
-        <el-row type="flex" justify="center">
-          <el-col :span="20">
-            <el-form-item prop="remark">
-              <el-input v-model="form.remark"
-                        :autosize="{ minRows: 2, maxRows: 4}"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :rows="2"
-                        :placeholder="$t('commons.input_content')"></el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
+          <test-case-step-item :label-width="formLabelWidth" v-if="form.stepModel === 'STEP' || !form.stepModel"
+                               :form="form" :read-only="readOnly"/>
 
-        <el-row style="margin-top: 15px;margin-bottom: 10px">
-          <el-col :offset="2" :span="20">{{ $t('test_track.case.attachment') }}:
-            <el-upload
-              accept=".jpg,.jpeg,.png,.xlsx,.doc,.pdf,.docx"
-              action=""
-              :show-file-list="false"
-              :before-upload="beforeUpload"
-              :http-request="handleUpload"
-              :on-exceed="handleExceed"
-              multiple
-              :limit="8"
-              :file-list="fileList">
-              <el-button icon="el-icon-plus" size="mini"></el-button>
-              <span slot="tip" class="el-upload__tip"> {{ $t('test_track.case.upload_tip') }} </span>
-            </el-upload>
-          </el-col>
-          <el-col :offset="2" :span="20">
-            <test-case-attachment :table-data="tableData"
-                                  :read-only="readOnly"
-                                  :is-delete="true"
-                                  @handleDelete="handleDelete"
-            />
-          </el-col>
-        </el-row>
+          <ms-form-divider :title="$t('test_track.case.other_info')"/>
 
-      </el-form>
+          <test-case-edit-other-info :read-only="readOnly" :project-id="projectIds" :form="form"
+                                     :is-copy="currentTestCaseInfo.isCopy"
+                                     :label-width="formLabelWidth" :case-id="form.id" :version-enable="versionEnable"
+                                     ref="otherInfo"/>
 
-      <template v-slot:footer>
-        <el-switch v-if="operationType == 'add'"
-                   v-model="isCreateContinue"
-                   :active-text="$t('test_track.case.save_create_continue')">
-        </el-switch>
-        <ms-dialog-footer v-if="!readOnly"
-                          @cancel="dialogFormVisible = false"
-                          @confirm="saveCase"/>
-      </template>
+          <el-row style="margin-top: 10px" v-if="type!=='add'">
+            <el-col :span="20" :offset="1">{{ $t('test_track.review.comment') }}:
+              <el-button icon="el-icon-plus" type="mini" @click="openComment"></el-button>
+            </el-col>
+          </el-row>
+          <el-row v-if="type!=='add'">
+            <el-col :span="20" :offset="1">
 
-    </el-dialog>
+              <review-comment-item v-for="(comment,index) in comments"
+                                   :key="index"
+                                   :comment="comment"
+                                   @refresh="getComments" api-url="/test/case"/>
+              <div v-if="comments.length === 0" style="text-align: center">
+                <i class="el-icon-chat-line-square" style="font-size: 15px;color: #8a8b8d;">
+                      <span style="font-size: 15px; color: #8a8b8d;">
+                        {{ $t('test_track.comment.no_comment') }}
+                      </span>
+                </i>
+              </div>
+            </el-col>
+          </el-row>
+          <test-case-comment :case-id="form.id"
+                             @getComments="getComments" ref="testCaseComment"/>
 
-  </div>
+        </el-form>
+      </div>
+      <ms-change-history ref="changeHistory"/>
+      <el-dialog
+        :fullscreen="true"
+        :visible.sync="dialogVisible"
+        :destroy-on-close="true"
+        width="100%"
+      >
+        <test-case-version-diff  v-if="dialogVisible" :old-data="oldData" :new-data="newData"
+                                :tree-nodes="treeNodes"></test-case-version-diff>
+
+      </el-dialog>
+
+      <version-create-other-info-select @confirmOtherInfo="confirmOtherInfo" ref="selectPropDialog"></version-create-other-info-select>
+    </div>
+  </el-card>
 
 
 </template>
 
 <script>
-
-import {TokenKey, WORKSPACE_ID} from '@/common/js/constants';
-import MsDialogFooter from '../../../common/components/MsDialogFooter'
-import {listenGoBack, removeGoBackListener} from "@/common/js/utils";
-import {LIST_CHANGE, TrackEvent} from "@/business/components/common/head/ListEvent";
-import {Message} from "element-ui";
+import {TokenKey} from '@/common/js/constants';
+import MsDialogFooter from '../../../common/components/MsDialogFooter';
+import {
+  getCurrentProjectID,
+  getCurrentUser,
+  getNodePath,
+  getUUID,
+  handleCtrlSEvent,
+  hasLicense,
+  hasPermission,
+  listenGoBack,
+  removeGoBackListener
+} from "@/common/js/utils";
 import TestCaseAttachment from "@/business/components/track/case/components/TestCaseAttachment";
+import CaseComment from "@/business/components/track/case/components/CaseComment";
+import MsInputTag from "@/business/components/api/automation/scenario/MsInputTag";
+import MsPreviousNextButton from "../../../common/components/MsPreviousNextButton";
+import {STEP} from "@/business/components/api/automation/scenario/Setting";
+import TestCaseComment from "@/business/components/track/case/components/TestCaseComment";
+import ReviewCommentItem from "@/business/components/track/review/commom/ReviewCommentItem";
+import {API_STATUS, REVIEW_STATUS} from "@/business/components/api/definition/model/JsonData";
+import MsTableButton from "@/business/components/common/components/MsTableButton";
+import MsSelectTree from "../../../common/select-tree/SelectTree";
+import MsTestCaseStepRichText from "./MsRichText";
+import CustomFiledComponent from "@/business/components/project/template/CustomFiledComponent";
+import {buildCustomFields, buildTestCaseOldFields, getTemplate, parseCustomField} from "@/common/js/custom_field";
+import MsFormDivider from "@/business/components/common/components/MsFormDivider";
+import TestCaseEditOtherInfo from "@/business/components/track/case/components/TestCaseEditOtherInfo";
+import FormRichTextItem from "@/business/components/track/case/components/FormRichTextItem";
+import TestCaseStepItem from "@/business/components/track/case/components/TestCaseStepItem";
+import StepChangeItem from "@/business/components/track/case/components/StepChangeItem";
+import MsChangeHistory from "../../../history/ChangeHistory";
+import {getTestTemplate} from "@/network/custom-field-template";
+import CustomFiledFormItem from "@/business/components/common/components/form/CustomFiledFormItem";
+import TestCaseVersionDiff from "@/business/components/track/case/version/TestCaseVersionDiff";
+import VersionCreateOtherInfoSelect from "@/business/components/track/case/components/VersionCreateOtherInfoSelect";
+
+const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
+const versionHistory = requireComponent.keys().length > 0 ? requireComponent("./version/VersionHistory.vue") : {};
 
 export default {
   name: "TestCaseEdit",
-  components: {MsDialogFooter, TestCaseAttachment},
+  components: {
+    CustomFiledFormItem,
+    StepChangeItem,
+    TestCaseStepItem,
+    FormRichTextItem,
+    TestCaseEditOtherInfo,
+    MsFormDivider,
+    CustomFiledComponent,
+    MsTableButton,
+    MsSelectTree,
+    ReviewCommentItem,
+    TestCaseComment, MsPreviousNextButton, MsInputTag, CaseComment, MsDialogFooter, TestCaseAttachment,
+    MsTestCaseStepRichText,
+    MsChangeHistory,
+    'MsVersionHistory': versionHistory.default,
+    TestCaseVersionDiff,
+    VersionCreateOtherInfoSelect,
+  },
   data() {
     return {
+      // sysList: [],//一级选择框的数据
+      path: "/test/case/add",
+      isPublic: false,
+      isXpack: false,
+      testCaseTemplate: {},
+      projectList: [],
+      options: REVIEW_STATUS,
+      statuOptions: API_STATUS,
+      comments: [],
       result: {},
       dialogFormVisible: false,
+      showFollow: false,
+      isValidate:false,
+      currentValidateName:"",
       form: {
         name: '',
-        module: '',
-        maintainer: '',
-        priority: '',
+        module: 'default-module',
+        nodePath: '/未规划用例',
+        maintainer: getCurrentUser().id,
+        priority: 'P0',
         type: '',
         method: '',
         prerequisite: '',
@@ -285,92 +256,367 @@ export default {
           desc: '',
           result: ''
         }],
+        stepDesc: '',
+        stepResult: '',
+        selected: [],
         remark: '',
+        tags: [],
+        demandId: '',
+        demandName: '',
+        status: 'Prepare',
+        reviewStatus: 'Prepare',
+        stepDescription: '',
+        expectedResult: '',
+        stepModel: 'STEP',
+        customNum: '',
+        followPeople: '',
       },
-      moduleOptions: [],
       maintainerOptions: [],
-      testOptions: [],
+      // testOptions: [],
       workspaceId: '',
-      fileList: [],
-      tableData: [],
-      uploadList: [],
       rules: {
         name: [
           {required: true, message: this.$t('test_track.case.input_name'), trigger: 'blur'},
-          {max: 50, message: this.$t('test_track.length_less_than') + '50', trigger: 'blur'}
+          {max: 255, message: this.$t('test_track.length_less_than') + '255', trigger: 'blur'}
         ],
         module: [{required: true, message: this.$t('test_track.case.input_module'), trigger: 'change'}],
+        customNum: [
+          {required: true, message: "ID必填", trigger: 'blur'},
+          {max: 50, message: this.$t('test_track.length_less_than') + '50', trigger: 'blur'}
+        ],
+        demandName: [{required: true, message: this.$t('test_track.case.input_demand_name'), trigger: 'change'}],
         maintainer: [{required: true, message: this.$t('test_track.case.input_maintainer'), trigger: 'change'}],
         priority: [{required: true, message: this.$t('test_track.case.input_priority'), trigger: 'change'}],
-        type: [{required: true, message: this.$t('test_track.case.input_type'), trigger: 'change'}],
-        testId: [{required: true, message: this.$t('commons.please_select'), trigger: 'change'}],
         method: [{required: true, message: this.$t('test_track.case.input_method'), trigger: 'change'}],
-        prerequisite: [{max: 500, message: this.$t('test_track.length_less_than') + '500', trigger: 'blur'}],
-        remark: [{max: 500, message: this.$t('test_track.length_less_than') + '500', trigger: 'blur'}]
+        // prerequisite: [{max: 500, message: this.$t('test_track.length_less_than') + '500', trigger: 'blur'}],
+        // remark: [{max: 1000, message: this.$t('test_track.length_less_than') + '1000', trigger: 'blur'}]
       },
-      formLabelWidth: "120px",
+      customFieldRules: {},
+      customFieldForm: null,
+      formLabelWidth: "100px",
       operationType: '',
       isCreateContinue: false,
       isStepTableAlive: true,
+      isFormAlive: true,
       methodOptions: [
         {value: 'auto', label: this.$t('test_track.case.auto')},
         {value: 'manual', label: this.$t('test_track.case.manual')}
-      ]
+      ],
+      testCase: {},
+      showInputTag: true,
+      tableType: "",
+      stepFilter: new STEP,
+      moduleObj: {
+        id: 'id',
+        label: 'name',
+      },
+      tabId: getUUID(),
+      versionData: [],
+      dialogVisible: false,
+      oldData: null,
+      newData: null,
+      selectedOtherInfo: null,
+      currentProjectId: "" ,
+      casePublic: false,
     };
   },
   props: {
     treeNodes: {
       type: Array
     },
-    readOnly: {
-      type: Boolean,
-      default: true
-    },
+    currentTestCaseInfo: {},
     selectNode: {
       type: Object
     },
-    currentProject: {
+    selectCondition: {
       type: Object
+    },
+    type: String,
+    publicEnable: {
+      type: Boolean,
+      default: false,
+    },
+    activeName: String,
+    versionEnable: Boolean,
+  },
+  computed: {
+    projectIds() {
+      return getCurrentProjectID();
+    },
+    moduleOptions() {
+      return this.$store.state.testCaseModuleOptions;
+    },
+    isCustomNum() {
+      return this.$store.state.currentProjectIsCustomNum;
+    },
+    readOnly() {
+      const {rowClickHasPermission} = this.currentTestCaseInfo;
+      if (rowClickHasPermission !== undefined) {
+        return !rowClickHasPermission;
+      }
+      return !hasPermission('PROJECT_TRACK_CASE:READ+CREATE') &&
+        !hasPermission('PROJECT_TRACK_CASE:READ+EDIT');
     }
+  },
+  watch: {
+    form: {
+      handler(val) {
+        if (val && this.$store.state.testCaseMap && this.form.id) {
+          let change = this.$store.state.testCaseMap.get(this.form.id);
+          change = change + 1;
+          this.$store.state.testCaseMap.set(this.form.id, change);
+        }
+      },
+      deep: true
+    },
+    'testCaseTemplate.customFields': {
+      handler(val) {
+        if (val && this.$store.state.testCaseMap && this.form.id) {
+          let change = this.$store.state.testCaseMap.get(this.form.id);
+          change = change + 1;
+          this.$store.state.testCaseMap.set(this.form.id, change);
+        }
+      },
+      deep: true
+    }
+  },
+  beforeDestroy() {
+    this.removeListener();
   },
   mounted() {
     this.getSelectOptions();
+    if (this.type === 'edit' || this.type === 'copy') {
+      this.open(this.currentTestCaseInfo);
+    }
+    // Cascader 级联选择器: 点击文本就让它自动点击前面的input就可以触发选择。
+    setInterval(function () {
+      document.querySelectorAll('.el-cascader-node__label').forEach(el => {
+        el.onclick = function () {
+          if (this.previousElementSibling) this.previousElementSibling.click();
+        };
+      });
+    }, 1000);
+    if (this.selectNode && this.selectNode.data && !this.form.id) {
+      this.form.module = this.selectNode.data.id;
+      this.form.nodePath = this.selectNode.data.path;
+    }
+    if ((!this.form.module || this.form.module === "default-module" || this.form.module === "root") && this.treeNodes.length > 0) {
+      this.form.module = this.treeNodes[0].id;
+      this.form.nodePath = this.treeNodes[0].path;
+    }
+    if (!(this.$store.state.testCaseMap instanceof Map)) {
+      this.$store.state.testCaseMap = new Map();
+    }
+    if (this.form.id) {
+      this.$store.state.testCaseMap.set(this.form.id, 0);
+    }
+
   },
-  watch: {
-    treeNodes() {
-      this.getModuleOptions();
-    },
-    currentProject() {
-      this.getTestOptions();
+  created() {
+    if (!this.projectList || this.projectList.length === 0) {   //没有项目数据的话请求项目数据
+      this.$get("/project/listAll", (response) => {
+        this.projectList = response.data;  //获取当前工作空间所拥有的项目,
+      })
+    }
+    this.projectId = this.projectIds;
+    let initAddFuc = this.initAddFuc;
+    getTestTemplate()
+      .then((template) => {
+        this.testCaseTemplate = template;
+        this.$store.commit('setTestCaseTemplate', this.testCaseTemplate);
+        initAddFuc();
+      });
+    if (this.selectNode && this.selectNode.data && !this.form.id) {
+      this.form.module = this.selectNode.data.id;
+      this.form.nodePath = this.selectNode.data.path;
+    } else {
+      this.form.module = this.treeNodes && this.length > 0 ? this.treeNodes[0].id : "";
+    }
+    if (this.type === 'edit' || this.type === 'copy') {
+      this.form.module = this.currentTestCaseInfo.nodeId;
+      this.form.nodePath = this.currentTestCaseInfo.nodePath;
+    }
+    if ((!this.form.module || this.form.module === "default-module" || this.form.module === "root") && this.treeNodes.length > 0) {
+      this.form.module = this.treeNodes[0].id;
+      this.form.nodePath = this.treeNodes[0].path;
+    }
+    this.$get('/test/case/follow/' + this.currentTestCaseInfo.id, response => {
+      this.form.follows = response.data;
+      for (let i = 0; i < response.data.length; i++) {
+        if (response.data[i] === this.currentUser().id) {
+          this.showFollow = true;
+          break;
+        }
+      }
+    }),
+      this.result = this.$get('/project_application/get/config/' + this.projectId + "/CASE_PUBLIC", res => {
+        let data = res.data;
+        if (data && data.casePublic) {
+          this.isPublic = true;
+        }
+      })
+    if (hasLicense()) {
+      this.isXpack = true;
+    } else {
+      this.isXpack = false;
+    }
+    if (hasLicense()) {
+      this.getVersionHistory();
     }
   },
   methods: {
+    alert: alert,
+    currentUser: () => {
+      return getCurrentUser();
+    },
+    openHis() {
+      this.$refs.changeHistory.open(this.form.id, ["测试用例", "測試用例", "Test case", "TRACK_TEST_CASE"]);
+    },
+    setModule(id, data) {
+      this.form.module = id;
+      this.form.nodePath = data.path;
+    },
+    initAddFuc() {
+      // this.loadOptions();
+      this.addListener(); //  添加 ctrl s 监听
+      if (this.selectNode && this.selectNode.data && !this.form.id) {
+        this.form.module = this.selectNode.data.id;
+        this.form.nodePath = this.selectNode.data.path;
+      } else {
+        this.form.module = this.treeNodes && this.length > 0 ? this.treeNodes[0].id : "";
+      }
+      if (this.type === 'edit' || this.type === 'copy') {
+        this.form.module = this.currentTestCaseInfo.nodeId;
+        this.form.nodePath = this.currentTestCaseInfo.nodePath;
+      }
+      if ((!this.form.module || this.form.module === "default-module" || this.form.module === "root") && this.treeNodes.length > 0) {
+        this.form.module = this.treeNodes[0].id;
+        this.form.nodePath = this.treeNodes[0].path;
+      }
+      if (this.type === 'add') {
+        //设置自定义熟悉默认值
+        this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules);
+        this.form.name = this.testCaseTemplate.caseName;
+        this.form.stepDescription = this.testCaseTemplate.stepDescription;
+        this.form.expectedResult = this.testCaseTemplate.expectedResult;
+        this.form.prerequisite = this.testCaseTemplate.prerequisite;
+        this.form.stepModel = this.testCaseTemplate.stepModel;
+        if (this.testCaseTemplate.steps) {
+          this.form.steps = JSON.parse(this.testCaseTemplate.steps);
+        }
+      }
+    },
+    setDefaultValue() {
+      if (!this.form.prerequisite) {
+        this.form.prerequisite = "";
+      }
+      if (!this.form.stepDescription) {
+        this.form.stepDescription = "";
+      }
+      if (!this.form.expectedResult) {
+        this.form.expectedResult = "";
+      }
+      if (!this.form.remark) {
+        this.form.remark = "";
+      }
+      if (this.form.id) {
+        this.$store.state.testCaseMap.set(this.form.id, 0);
+      }
+    },
+    handleCommand(e) {
+      if (e === "ADD_AND_CREATE") {
+        this.$refs['caseFrom'].validate((valid) => {
+          if (!valid) {
+            this.saveCase();
+          } else {
+            this.saveCase(function (t) {
+              let tab = {};
+              tab.name = 'add';
+              t.$emit('addTab', tab);
+            });
+          }
+        })
+      } else if (e === 'ADD_AND_PUBLIC') {
+        this.casePublic = true;
+        this.saveCase();
+      } else {
+        this.saveCase();
+      }
+    },
+    openComment() {
+      this.$refs.testCaseComment.open()
+    },
+    getComments(testCase) {
+      let id = '';
+      if (testCase) {
+        id = testCase.id;
+      } else {
+        id = this.form.id;
+      }
+      this.result = this.$get('/test/case/comment/list/' + id, res => {
+        this.comments = res.data;
+      })
+    },
+    showAll() {
+      if (!this.customizeVisible) {
+        this.operatingElements = this.stepFilter.get("ALL");
+        this.selectedTreeNode = undefined;
+      }
+      //this.reload();
+    },
     reload() {
       this.isStepTableAlive = false;
-      this.$nextTick(() => (this.isStepTableAlive = true));
+      this.$nextTick(() => {
+        this.isStepTableAlive = true;
+        if (this.form.id) {
+          this.$store.state.testCaseMap.set(this.form.id, 0);
+        }
+      });
+    },
+    reloadForm() {
+      this.isFormAlive = false;
+      this.$nextTick(() => (this.isFormAlive = true));
     },
     open(testCase) {
-      this.resetForm();
-
+      /*
+             this.form.selected=[["automation", "3edaaf31-3fa4-4a53-9654-320205c2953a"],["automation", "3aa58bd1-c986-448c-8060-d32713dbd4eb"]]
+      */
+      this.projectId = this.projectIds;
+      let initFuc = this.initEdit;
+      getTemplate('field/template/case/get/relate/', this)
+        .then((template) => {
+          this.testCaseTemplate = template;
+          this.$store.commit('setTestCaseTemplate', this.testCaseTemplate);
+          initFuc(testCase);
+        });
+    },
+    initEdit(testCase, callback) {
       if (window.history && window.history.pushState) {
         history.pushState(null, null, document.URL);
         window.addEventListener('popstate', this.close);
       }
+      this.resetForm();
       listenGoBack(this.close);
       this.operationType = 'add';
       if (testCase) {
         //修改
         this.operationType = 'edit';
         //复制
-        if (testCase.name === '') {
+        if (this.type === 'copy') {
+          this.showInputTag = false;
           this.operationType = 'add';
+          this.setFormData(testCase);
+          this.setTestCaseExtInfo(testCase);
+          this.getSelectOptions();
+          //设置自定义熟悉默认值
+          this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules, buildTestCaseOldFields(this.form));
+          this.reload();
+          this.$nextTick(() => {
+            this.showInputTag = true;
+          });
+        } else {
+          this.getTestCase(testCase.id);
         }
-        let tmp = {};
-        Object.assign(tmp, testCase);
-        tmp.steps = JSON.parse(testCase.steps);
-        Object.assign(this.form, tmp);
-        this.form.module = testCase.nodeId;
-        this.getFileMetaData(testCase);
       } else {
         if (this.selectNode.data) {
           this.form.module = this.selectNode.data.id;
@@ -384,133 +630,194 @@ export default {
         this.form.type = 'functional';
         this.form.method = 'manual';
         this.form.maintainer = user.id;
+        this.form.tags = [];
+        this.getSelectOptions();
+        this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules);
+        this.reload();
       }
-
-      this.getSelectOptions();
-      this.reload();
-      this.dialogFormVisible = true;
+      if (callback) {
+        callback();
+      }
+      if (this.type !== 'copy') {
+        this.getComments(this.currentTestCaseInfo);
+      }
     },
-    getFileMetaData(testCase) {
-      this.fileList = [];
-      this.tableData = [];
-      this.uploadList = [];
-      this.result = this.$get("test/case/file/metadata/" + testCase.id, response => {
-        let files = response.data;
-
-        if (!files) {
-          return;
+    getTestCase(id) {
+      this.showInputTag = false;
+      if (!id) {
+        id = this.currentTestCaseInfo.id;
+      }
+      this.result = this.$get('/test/case/get/' + id, response => {
+        if (response.data) {
+          this.path = "/test/case/edit";
+          if (this.currentTestCaseInfo.isCopy) {
+            this.path = "/test/case/add";
+          }
+        } else {
+          this.path = "/test/case/add";
         }
-        // deep copy
-        this.fileList = JSON.parse(JSON.stringify(files));
-        this.tableData = JSON.parse(JSON.stringify(files));
-        this.tableData.map(f => {
-          f.size = f.size + ' Bytes';
+        let testCase = response.data;
+        this.setFormData(testCase);
+        this.setTestCaseExtInfo(testCase);
+        this.getSelectOptions();
+        this.reload();
+        this.$nextTick(() => {
+          this.showInputTag = true;
         });
-      })
-    },
-    handleAddStep(index, data) {
-      let step = {};
-      step.num = data.num + 1;
-      step.desc = "";
-      step.result = "";
-      this.form.steps.forEach(step => {
-        if (step.num > data.num) {
-          step.num++;
-        }
       });
-      this.form.steps.splice(index + 1, 0, step);
     },
-    handleCopyStep(index, data) {
-      let step = {};
-      step.num = data.num + 1;
-      step.desc = data.desc;
-      step.result = data.result;
-      this.form.steps.forEach(step => {
-        if (step.num > data.num) {
-          step.num++;
-        }
-      });
-      this.form.steps.splice(index + 1, 0, step);
+    async setFormData(testCase) {
+      try {
+        testCase.selected = JSON.parse(testCase.testId);
+      } catch (error) {
+        testCase.selected = testCase.testId
+      }
+      let tmp = {};
+      Object.assign(tmp, testCase);
+      tmp.steps = JSON.parse(testCase.steps);
+      if (!tmp.steps || tmp.steps.length < 1) {
+        tmp.steps = [{
+          num: 1,
+          desc: '',
+          result: ''
+        }];
+      }
+      tmp.tags = JSON.parse(tmp.tags);
+      Object.assign(this.form, tmp);
+      if (!this.form.stepModel) {
+        this.form.stepModel = "STEP";
+      }
+      this.form.module = testCase.nodeId;
+      //设置自定义熟悉默认值
+      this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules, testCase ? buildTestCaseOldFields(this.form) : null);
+      this.setDefaultValue();
+      // 重新渲染，显示自定义字段的必填校验
+      this.reloadForm();
     },
-    handleDeleteStep(index, data) {
-      this.form.steps.splice(index, 1);
-      this.form.steps.forEach(step => {
-        if (step.num > data.num) {
-          step.num--;
-        }
-      });
+    setTestCaseExtInfo(testCase) {
+      this.testCase = {};
+      if (testCase) {
+        // 复制 不查询评论
+        this.testCase = testCase.isCopy ? {} : testCase;
+      }
     },
     close() {
       //移除监听，防止监听其他页面
       removeGoBackListener(this.close);
       this.dialogFormVisible = false;
     },
-    saveCase() {
-      this.$refs['caseFrom'].validate((valid) => {
-        if (valid) {
-          let param = this.buildParam();
-          if (this.validate(param)) {
-            let option = this.getOption(param);
-            this.result = this.$request(option, () => {
-              this.$success(this.$t('commons.save_success'));
-              if (this.operationType == 'add' && this.isCreateContinue) {
-                this.form.name = '';
-                this.form.prerequisite = '';
-                this.form.steps = [{
-                  num: 1,
-                  desc: '',
-                  result: ''
-                }];
-                this.form.remark = '';
-                this.uploadList = [];
-                this.fileList = [];
-                this.tableData = [];
-                this.$emit("refresh");
-                return;
-              }
-              this.dialogFormVisible = false;
-              this.$emit("refresh");
-              // 发送广播，刷新 head 上的最新列表
-              TrackEvent.$emit(LIST_CHANGE);
-            });
+    saveCase(callback) {
+      if (this.validateForm()) {
+        this._saveCase(callback);
+      }else{
+        this.$refs.versionHistory.loading = false;
+        this.$refs.selectPropDialog.close();
+      }
+    },
+    _saveCase(callback) {
+      let param = this.buildParam();
+      if (this.validate(param)) {
+        let option = this.getOption(param);
+        this.result = this.$request(option, (response) => {
+          this.$success(this.$t('commons.save_success'));
+          this.path = "/test/case/edit";
+          // this.operationType = "edit"
+          this.$emit("refreshTestCase",);
+          this.$store.state.testCaseMap.delete(this.form.id);
+          //this.tableType = 'edit';
+          this.$emit("refresh", response.data);
+          if (this.form.id) {
+            this.$emit("caseEdit", param);
+          } else {
+            param.id = response.data.id;
+            this.$emit("caseCreate", param);
+            this.close();
           }
-        } else {
-          return false;
-        }
-      });
+          this.form.id = response.data.id;
+          this.currentTestCaseInfo.id = response.data.id;
+
+          if (callback) {
+            callback(this);
+          }
+          // 保存用例后刷新附件
+
+          //更新版本
+          if (hasLicense()) {
+            this.getVersionHistory();
+          }
+        });
+      }
     },
     buildParam() {
       let param = {};
       Object.assign(param, this.form);
       param.steps = JSON.stringify(this.form.steps);
       param.nodeId = this.form.module;
-      this.moduleOptions.forEach(item => {
-        if (this.form.module === item.id) {
-          param.nodePath = item.path;
+      if (!this.publicEnable) {
+        param.nodePath = getNodePath(this.form.module, this.moduleOptions);
+        if (this.projectId) {
+          param.projectId = this.projectId;
         }
-      });
-      if (this.currentProject.id) {
-        param.projectId = this.currentProject.id;
+      }
+      if (this.publicEnable) {
+        this.casePublic = true;
       }
       param.name = param.name.trim();
-      if (param.method != 'auto') {
-        param.testId = null;
+      if (this.form.tags instanceof Array) {
+        this.form.tags = JSON.stringify(this.form.tags);
+      }
+      //当 testId 为其他信息的时候必须删除该字段避免后端反序列化报错
+      if ("other" != this.form.selected) {
+        param.testId = JSON.stringify(this.form.selected);
+      }else{
+        delete param.selected;
+      }
+      param.tags = this.form.tags;
+      param.casePublic = this.casePublic;
+      param.type = 'functional';
+      buildCustomFields(this.form, param, this.testCaseTemplate);
+      this.parseOldFields(param);
+      //配置多版本复制的时候是否要连带复制其他信息
+      if (this.selectedOtherInfo) {
+        param.otherInfoConfig = this.selectedOtherInfo;
       }
       return param;
     },
+    parseOldFields(param) {
+      let customFieldsStr = param.customFields;
+      if (customFieldsStr) {
+        let customFields = JSON.parse(customFieldsStr);
+        customFields.forEach(item => {
+          if (item.name === '用例等级') {
+            param.priority = item.value;
+          }
+          if (item.name === '责任人') {
+            param.maintainer = item.value;
+          }
+          if (item.name === '用例状态') {
+            param.status = item.value;
+          }
+        });
+      }
+    },
     getOption(param) {
       let formData = new FormData();
-      let url = '/test/case/' + this.operationType;
-      this.uploadList.forEach(f => {
-        formData.append("file", f);
-      });
-
-      if (param.isCopy) {
-        // 如果是copy，则把文件的ID传到后台进行文件复制
-        param.fileIds = this.fileList.map(f => f.id);
+      if (this.$refs.otherInfo && this.$refs.otherInfo.uploadList) {
+        this.$refs.otherInfo.uploadList.forEach(f => {
+          formData.append("file", f);
+        });
       }
 
-      param.updatedFileList = this.fileList;
+      if (this.$refs.otherInfo && this.$refs.otherInfo.fileList) {
+        if (param.isCopy) {
+          // 如果是copy，则把文件的ID传到后台进行文件复制
+          param.fileIds = this.$refs.otherInfo.fileList.map(f => f.id);
+        }
+        param.updatedFileList = this.$refs.otherInfo.fileList;
+      } else {
+        param.fileIds = [];
+        param.updatedFileList = [];
+      }
 
       let requestJson = JSON.stringify(param, function (key, value) {
         return key === "file" ? undefined : value
@@ -519,10 +826,9 @@ export default {
       formData.append('request', new Blob([requestJson], {
         type: "application/json"
       }));
-
       return {
         method: 'POST',
-        url: url,
+        url: this.path,
         data: formData,
         headers: {
           'Content-Type': undefined
@@ -538,7 +844,7 @@ export default {
           return false;
         }
       }
-      if (param.name == '') {
+      if (param.name === '') {
         this.$warning(this.$t('test_track.case.input_name'));
         return false;
       }
@@ -546,156 +852,224 @@ export default {
     },
     typeChange() {
       this.form.testId = '';
-      this.getTestOptions()
-    },
-    getModuleOptions() {
-      let moduleOptions = [];
-      this.treeNodes.forEach(node => {
-        this.buildNodePath(node, {path: ''}, moduleOptions);
-      });
-      this.moduleOptions = moduleOptions;
     },
     getMaintainerOptions() {
-      let workspaceId = localStorage.getItem(WORKSPACE_ID);
-      this.$post('/user/ws/member/tester/list', {workspaceId: workspaceId}, response => {
+      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
         this.maintainerOptions = response.data;
       });
     },
-    getTestOptions() {
-      this.testOptions = [];
-      if (this.currentProject.id && this.form.type != '' && this.form.type != 'functional') {
-        this.result = this.$get('/' + this.form.type + '/list/' + this.currentProject.id, response => {
-          this.testOptions = response.data;
-          this.testOptions.unshift({id: 'other', name: this.$t('test_track.case.other')})
-        });
-      } else if (this.form.type === 'functional') {
-        this.testOptions = [{id: 'other', name: this.$t('test_track.case.other')}];
-        this.form.testId = 'other';
-      }
-    },
     getSelectOptions() {
-      this.getModuleOptions();
       this.getMaintainerOptions();
-      this.getTestOptions();
-    },
-    buildNodePath(node, option, moduleOptions) {
-      //递归构建节点路径
-      option.id = node.id;
-      option.path = option.path + '/' + node.name;
-      moduleOptions.push(option);
-      if (node.children) {
-        for (let i = 0; i < node.children.length; i++) {
-          this.buildNodePath(node.children[i], {path: option.path}, moduleOptions);
-        }
-      }
     },
     resetForm() {
       //防止点击修改后，点击新建触发校验
       if (this.$refs['caseFrom']) {
-        this.$refs['caseFrom'].validate((valid) => {
+        this.$refs['caseFrom'].validate(() => {
           this.$refs['caseFrom'].resetFields();
-          this.form.name = '';
-          this.form.module = '';
-          this.form.type = '';
-          this.form.method = '';
-          this.form.maintainer = '';
-          this.form.priority = '';
-          this.form.prerequisite = '';
-          this.form.remark = '';
-          this.form.testId = '';
-          this.form.testName = '';
-          this.form.steps = [{
-            num: 1,
-            desc: '',
-            result: ''
-          }];
-          this.uploadList = [];
-          this.fileList = [];
-          this.tableData = [];
+          this._resetForm();
           return true;
+        });
+      } else {
+        this._resetForm();
+      }
+    },
+    _resetForm() {
+      this.form.name = '';
+      this.form.module = '';
+      this.form.type = '';
+      this.form.method = '';
+      this.form.maintainer = '';
+      this.form.priority = '';
+      this.form.prerequisite = '';
+      this.form.remark = '';
+      this.form.testId = '';
+      this.form.testName = '';
+      this.form.steps = [{
+        num: 1,
+        desc: '',
+        result: ''
+      }];
+      this.form.customNum = '';
+      this.form.tags = [];
+    },
+    addListener() {
+      document.addEventListener("keydown", this.createCtrlSHandle);
+    },
+    removeListener() {
+      document.removeEventListener("keydown", this.createCtrlSHandle);
+    },
+    createCtrlSHandle(event) {
+      let curTabId = this.$store.state.curTabId;
+      if (curTabId === this.tabId) {
+        if (event.keyCode === 83 && event.ctrlKey && this.readOnly) {
+          this.$warning(this.$t("commons.no_operation_permission"));
+          return false;
+        }
+        handleCtrlSEvent(event, this.saveCase);
+      }
+    },
+    saveFollow() {
+      if (this.showFollow) {
+        this.showFollow = false;
+        for (let i = 0; i < this.form.follows.length; i++) {
+          if (this.form.follows[i] === this.currentUser().id) {
+            this.form.follows.splice(i, 1)
+            break;
+          }
+        }
+        if (this.path === "/test/case/edit") {
+          this.result.loading = true
+          this.$post('/test/case/edit/follows/' + this.form.id, this.form.follows, () => {
+            this.result.loading = false
+            this.$success(this.$t('commons.cancel_follow_success'));
+          });
+        }
+
+      } else {
+        this.showFollow = true;
+        if (!this.form.follows) {
+          this.form.follows = [];
+        }
+        this.form.follows.push(this.currentUser().id)
+
+        if (this.path === "/test/case/edit") {
+          this.result.loading = true
+          this.$post('/test/case/edit/follows/' + this.form.id, this.form.follows, () => {
+            this.result.loading = false
+            this.$success(this.$t('commons.follow_success'));
+          });
+        }
+      }
+    },
+    getVersionHistory(param) {
+      this.$get('/test/case/versions/' + this.currentTestCaseInfo.id, response => {
+        if (response.data.length > 0) {
+          for (let i = 0; i < response.data.length; i++) {
+              this.currentProjectId = response.data[i].projectId;
+          }
+        } else {
+          this.currentProjectId = getCurrentProjectID();
+        }
+        this.versionData = response.data;
+        this.$refs.versionHistory.loading = false;
+      });
+    },
+    setSpecialPropForCompare: function (that) {
+      that.newData.tags = JSON.parse(that.newData.tags || "{}");
+      that.newData.steps = JSON.parse(that.newData.steps || "{}");
+      that.oldData.tags = JSON.parse(that.oldData.tags || "{}");
+      that.oldData.steps = JSON.parse(that.oldData.steps || "{}");
+      that.newData.readOnly = true;
+      that.oldData.readOnly = true;
+    },
+    compare(row) {
+      this.$get('/test/case/get/' + row.id + "/" + this.currentTestCaseInfo.refId, response => {
+        let p1 = this.$get('/test/case/get/' + response.data.id);
+        let p2 = this.$get('/test/case/get/' + this.currentTestCaseInfo.id);
+        let that = this;
+        Promise.all([p1, p2]).then(data => {
+          if (data[0] && data[1]) {
+            that.newData = data[0].data.data;
+            that.oldData = data[1].data.data;
+            let testCase = that.versionData.filter(v => v.versionId === this.currentTestCaseInfo.versionId)[0];
+            that.newData.versionName = that.versionData.filter(v => v.id === that.newData.id)[0].versionName;
+            that.oldData.versionName = that.versionData.filter(v => v.id === that.oldData.id)[0].versionName;
+            that.newData.userName = response.data.createName
+            that.oldData.userName = testCase.createName
+            this.setSpecialPropForCompare(that);
+            that.dialogVisible = true;
+          }
+        });
+      });
+    },
+    checkout(row) {
+      this.$refs.versionHistory.loading = true;
+      let testCase = this.versionData.filter(v => v.versionId === row.id)[0];
+
+      if (testCase) {
+        this.$get('test/case/get/' + testCase.id, response => {
+          let testCase = response.data;
+          this.$emit("checkout", testCase);
+          this.$refs.versionHistory.loading = false;
         });
       }
     },
-    handleExceed() {
-      this.$error(this.$t('load_test.file_size_limit'));
-    },
-    beforeUpload(file) {
-      if (!this.fileValidator(file)) {
-        /// todo: 显示错误信息
-        return false;
-      }
-
-      if (this.tableData.filter(f => f.name === file.name).length > 0) {
-        this.$error(this.$t('load_test.delete_file'));
-        return false;
-      }
-
-      let type = file.name.substring(file.name.lastIndexOf(".") + 1);
-
-      this.tableData.push({
-        name: file.name,
-        size: file.size + ' Bytes', /// todo: 按照大小显示Byte、KB、MB等
-        type: type.toUpperCase(),
-        updateTime: new Date().getTime(),
-      });
-
-      return true;
-    },
-    handleUpload(uploadResources) {
-      this.uploadList.push(uploadResources.file);
-    },
-    handleDownload(file) {
-      let data = {
-        name: file.name,
-        id: file.id,
-      };
-      let config = {
-        url: '/test/case/file/download',
-        method: 'post',
-        data: data,
-        responseType: 'blob'
-      };
-      this.result = this.$request(config).then(response => {
-        const content = response.data;
-        const blob = new Blob([content]);
-        if ("download" in document.createElement("a")) {
-          // 非IE下载
-          //  chrome/firefox
-          let aTag = document.createElement('a');
-          aTag.download = file.name;
-          aTag.href = URL.createObjectURL(blob);
-          aTag.click();
-          URL.revokeObjectURL(aTag.href)
-        } else {
-          // IE10+下载
-          navigator.msSaveBlob(blob, this.filename)
+    validateForm() {
+      let isValidate = true;
+      this.$refs['caseFrom'].validate((valid) => {
+        if (!valid) {
+          isValidate = false;
+          return false;
         }
-      }).catch(e => {
-        Message.error({message: e.message, showClose: true});
       });
+      this.$refs['customFieldForm'].validate((valid) => {
+        if (!valid) {
+          isValidate = false;
+          for (let i = 0; i < this.$refs['customFieldForm'].fields.length; i++) {
+            let customField = this.$refs['customFieldForm'].fields[i];
+            if(customField.validateState==='error'){
+              if(this.currentValidateName){
+                this.currentValidateName = this.currentValidateName+","+customField.label
+              }else{
+                this.currentValidateName = customField.label
+              }
+            }
+          }
+          this.isValidate = true;
+          this.$warning(this.currentValidateName +this.$t('commons.cannot_be_null'));
+          this.currentValidateName = '';
+          return false;
+        }
+      });
+      return isValidate;
     },
-    handleDelete(file, index) {
-      this.$alert(this.$t('load_test.delete_file_confirm') + file.name + "？", '', {
+    async create(row) {
+      if (this.validateForm()) {
+        // 创建新版本
+        this.form.versionId = row.id;
+        let hasOtherInfo = await this.hasOtherInfo();
+        if (hasOtherInfo) {
+          this.$refs.versionHistory.loading = false;
+          this.$refs.selectPropDialog.open();
+        } else {
+          this.saveCase();
+        }
+      } else {
+        this.$refs.versionHistory.loading = false;
+      }
+    },
+    del(row) {
+      let that = this;
+      this.$alert(this.$t('api_test.definition.request.delete_confirm') + ' ' + row.name + " ？", '', {
         confirmButtonText: this.$t('commons.confirm'),
         callback: (action) => {
           if (action === 'confirm') {
-            this._handleDelete(file, index);
+            this.$get('/test/case/delete/' + row.id + '/' + this.form.refId, () => {
+              this.$success(this.$t('commons.delete_success'));
+              this.getVersionHistory();
+              this.$emit("refresh");
+            });
+          } else {
+            that.$refs.versionHistory.loading = false;
           }
         }
       });
     },
-    _handleDelete(file, index) {
-      this.fileList.splice(index, 1);
-      this.tableData.splice(index, 1);
-      let i = this.uploadList.findIndex(upLoadFile => upLoadFile.name === file.name);
-      if (i > -1) {
-        this.uploadList.splice(i, 1);
-      }
+    changeType(type) {
+      this.type = type;
     },
-    fileValidator(file) {
-      /// todo: 是否需要对文件内容和大小做限制
-      return file.size > 0;
-    }
+    hasOtherInfo() {
+      return new Promise((resolve) => {
+          this.$get("test/case/hasOtherInfo/" + this.form.id, (res) => {
+            resolve(res.data);
+          })
+        }
+      );
+    },
+    confirmOtherInfo(selectedOtherInfo) {
+      this.selectedOtherInfo = selectedOtherInfo;
+      this.saveCase();
+    },
   }
 }
 </script>
@@ -710,4 +1084,62 @@ export default {
   width: 194px;
 }
 
+.container {
+  height: 100vh;
+}
+
+.case-form {
+  height: 95%;
+  overflow: auto;
+}
+
+.case-dialog >>> .el-dialog__body {
+  padding: 0 20px 10px 20px;
+}
+
+.container >>> .el-card__body {
+  height: calc(100vh - 120px);
+}
+
+.comment-card >>> .el-card__header {
+  padding: 27px 20px;
+}
+
+.comment-card >>> .el-card__body {
+  height: calc(100vh - 120px);
+}
+
+.head-right {
+  text-align: right;
+}
+
+.ms-main-div {
+  background-color: white;
+}
+
+.ms-opt-btn {
+  position: fixed;
+  right: 50px;
+  z-index: 9;
+}
+
+.ms-case-input {
+  width: 100%;
+}
+
+.ms-case {
+  width: 100%;
+}
+
+/deep/ .el-button-group > .el-button:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  height: 32px;
+  width: 56px;
+}
+
+.other-info-tabs {
+  padding-left: 60px;
+  margin-left: 40px;
+}
 </style>

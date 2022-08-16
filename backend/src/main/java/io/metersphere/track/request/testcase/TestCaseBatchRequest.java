@@ -13,4 +13,15 @@ public class TestCaseBatchRequest extends TestCaseWithBLOBs {
     private List<String> ids;
     private List<OrderRequest> orders;
     private String projectId;
+    private CustomFiledRequest customField;
+    private QueryTestCaseRequest condition;
+    private String customTemplateFieldId;
+
+    @Getter
+    @Setter
+    public static class CustomFiledRequest {
+        private String id;
+        private String name;
+        private Object value;
+    }
 }

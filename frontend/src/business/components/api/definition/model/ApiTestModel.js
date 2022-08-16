@@ -1,5 +1,6 @@
 import {
   Arguments,
+  ConstantTimer as JMXConstantTimer,
   CookieManager,
   DNSCacheManager,
   DubboSample,
@@ -10,6 +11,8 @@ import {
   HTTPSamplerArguments,
   HTTPsamplerFiles,
   HTTPSamplerProxy,
+  IfController as JMXIfController,
+  TransactionController as JMXTransactionController,
   JDBCDataSource,
   JDBCSampler,
   JSONPathAssertion,
@@ -20,12 +23,11 @@ import {
   ResponseCodeAssertion,
   ResponseDataAssertion,
   ResponseHeadersAssertion,
+  TCPSampler,
   TestElement,
   TestPlan,
   ThreadGroup,
   XPath2Extractor,
-  IfController as JMXIfController,
-  ConstantTimer as JMXConstantTimer, TCPSampler,
 } from "./JMX";
 import Mock from "mockjs";
 import {funcFilters} from "@/common/js/func-filter";
@@ -101,6 +103,7 @@ export const ASSERTION_TYPE = {
   DURATION: "Duration",
   JSR223: "JSR223",
   XPATH2: "XPath2",
+  DOCUMENT: "Document",
 }
 
 export const ASSERTION_REGEX_SUBJECT = {
@@ -124,8 +127,7 @@ export class BaseConfig {
         if (!(this[name] instanceof Array)) {
           if (notUndefined === true) {
             this[name] = options[name] === undefined ? this[name] : options[name];
-          }
-          else {
+          } else {
             this[name] = options[name];
           }
         }
@@ -596,9 +598,11 @@ export class TCPRequest extends Request {
     super(RequestFactory.TYPES.TCP, options);
     this.useEnvironment = options.useEnvironment;
     this.debugReport = undefined;
+    this.parameters = [];
 
     //设置TCPConfig的属性
     this.set(new TCPConfig(options));
+    this.sets({parameters: KeyValue}, options);
 
     this.request = options.request;
   }
@@ -752,6 +756,7 @@ export class KeyValue extends BaseConfig {
     this.files = undefined;
     this.enable = undefined;
     this.uuid = undefined;
+    this.time = undefined;
     this.contentType = undefined;
     this.set(options);
   }
@@ -777,8 +782,34 @@ export class Assertions extends BaseConfig {
     this.xpath2 = [];
     this.duration = undefined;
     this.enable = true;
+    this.document = {type: "JSON", data: {xmlFollowAPI: false, jsonFollowAPI: false, json: [], xml: []}};
     this.set(options);
     this.sets({text: Text, regex: Regex, jsonPath: JSONPath, jsr223: AssertionJSR223, xpath2: XPath2}, options);
+  }
+
+  initOptions(options) {
+    options = options || {};
+    options.duration = new Duration(options.duration);
+    return options;
+  }
+}
+
+export class AssertionDocument extends BaseConfig {
+  constructor(options) {
+    super();
+    this.id = uuid();
+    this.name = "root";
+    this.status = true;
+    this.groupId = "";
+    this.rowspan = 1;
+    this.include = false;
+    this.typeVerification = false;
+    this.type = "object";
+    this.arrayVerification = false;
+    this.contentVerifications = "none";
+    this.expectedOutcome = "";
+    this.children = [];
+    this.set(options);
   }
 
   initOptions(options) {
@@ -802,15 +833,15 @@ export class AssertionJSR223 extends AssertionType {
     this.operator = undefined;
     this.value = undefined;
     this.desc = undefined;
-
+    this.enable = true;
     this.name = undefined;
     this.script = undefined;
-    this.language = "beanshell";
+    this.scriptLanguage = "beanshell";
     this.set(options);
   }
 
   isValid() {
-    return !!this.script && !!this.language;
+    return !!this.script && !!this.scriptLanguage;
   }
 }
 
@@ -841,12 +872,29 @@ export class JSR223Processor extends BaseConfig {
     this.resourceId = uuid();
     this.active = false;
     this.type = "JSR223Processor";
+    this.label = "";
     this.script = undefined;
-    this.language = "beanshell";
+    this.scriptLanguage = "beanshell";
     this.enable = true;
+    this.hashTree = [];
     this.set(options);
   }
 }
+
+export class JDBCProcessor extends BaseConfig {
+  constructor(options) {
+    super();
+    this.resourceId = uuid();
+    this.active = false;
+    this.type = "JDBCProcessor";
+    this.enable = true;
+    this.variables = [];
+    this.dataSourceId = "";
+    this.hashTree = [];
+    this.set(options);
+  }
+}
+
 
 export class Regex extends AssertionType {
   constructor(options) {
@@ -855,6 +903,7 @@ export class Regex extends AssertionType {
     this.expression = undefined;
     this.description = undefined;
     this.assumeSuccess = false;
+    this.enable = true;
 
     this.set(options);
   }
@@ -888,6 +937,7 @@ export class XPath2 extends AssertionType {
     super(ASSERTION_TYPE.XPATH2);
     this.expression = undefined;
     this.description = undefined;
+    this.enable = true;
     this.set(options);
   }
 
@@ -1014,6 +1064,94 @@ export class IfController extends Controller {
     return "";
   }
 }
+
+export class PluginController extends BaseConfig {
+  constructor(options = {}) {
+    super("Plugin", options);
+    this.type = "Plugin";
+    this.active = false;
+    this.enable = true;
+    this.hashTree = [];
+    this.set(options);
+  }
+
+  isValid() {
+    if (!!this.operator && this.operator.indexOf("empty") > 0) {
+      return !!this.variable && !!this.operator;
+    }
+    return !!this.variable && !!this.operator && !!this.value;
+  }
+
+  label() {
+    if (this.isValid()) {
+      let label = this.variable;
+      if (this.operator) label += " " + this.operator;
+      if (this.value) label += " " + this.value;
+      return label;
+    }
+    return "";
+  }
+}
+
+export class LoopController extends Controller {
+  constructor(options = {}) {
+    super("LoopController", options);
+    this.type = "LoopController";
+    this.active = false;
+    this.loopType = "LOOP_COUNT";
+    this.countController = {loops: 0, interval: 0, proceed: true, requestResult: {}};
+    this.forEachController = {inputVal: "", returnVal: "", interval: 0, requestResult: {}};
+    this.whileController = {variable: "", operator: "", value: "", timeout: 0, requestResult: {}};
+    this.hashTree = [];
+    this.set(options);
+  }
+
+  isValid() {
+    if (!!this.operator && this.operator.indexOf("empty") > 0) {
+      return !!this.variable && !!this.operator;
+    }
+    return !!this.variable && !!this.operator && !!this.value;
+  }
+
+  label() {
+    if (this.isValid()) {
+      let label = this.variable;
+      if (this.operator) label += " " + this.operator;
+      if (this.value) label += " " + this.value;
+      return label;
+    }
+    return "";
+  }
+}
+
+export class TransactionController extends Controller {
+  constructor(options = {}) {
+    super("TransactionController", options);
+    this.type = "TransactionController";
+    this.name;
+    this.hashTree = [];
+    this.set(options);
+  }
+
+  isValid() {
+    if (!!this.operator && this.operator.indexOf("empty") > 0) {
+      return !!this.variable && !!this.operator;
+    }
+    return !!this.variable && !!this.operator && !!this.value;
+  }
+
+  label() {
+    if (this.isValid()) {
+      let label = this.$t('api_test.automation.transcation_controller');
+      if (this.name != null && this.name !== "") {
+        label = this.name;
+      }
+      return label;
+    }
+    return "";
+  }
+}
+
 
 export class Timer extends BaseConfig {
   static TYPES = {

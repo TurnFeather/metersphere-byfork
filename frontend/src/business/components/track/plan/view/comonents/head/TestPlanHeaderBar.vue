@@ -32,7 +32,8 @@ export default {
 
   .test-plan-header-bar {
     height: 50px;
-    background-color: white;
+    background-color: #FFF;
+    border-bottom: 2px solid #E6E6E6;
   }
 
   .header-info {
@@ -44,8 +45,12 @@ export default {
   }
 
   .menu-ul {
-    width: 500px;
+    width: 600px;
     display: inline-block;
+  }
+
+  .menu-ul >>> .el-menu-item {
+    height: 51px !important;
   }
 
 </style>

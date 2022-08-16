@@ -1,12 +1,19 @@
 <template>
   <el-dialog :close-on-click-modal="false" :title="$t('api_test.environment.environment_config')"
-             :visible.sync="visible" class="environment-dialog" width="60%"
-             @close="close" append-to-body ref="environmentConfig">
+             :visible.sync="visible" class="environment-dialog" width="80%" top="50px"
+             @close="close" append-to-body destroy-on-close ref="environmentConfig">
+    <template #title>
+      <ms-dialog-header :title="$t('api_test.environment.environment_config')"
+                        @cancel="visible = false"
+                        @confirm="save"/>
+    </template>
     <el-container v-loading="result.loading">
       <ms-aside-item :enable-aside-hidden="false" :title="$t('api_test.environment.environment_list')"
                      :data="environments" :item-operators="environmentOperators" :add-fuc="addEnvironment"
+                     :env-add-permission="ENV_CREATE"
                      :delete-fuc="deleteEnvironment" @itemSelected="environmentSelected" ref="environmentItems"/>
-      <environment-edit :environment="currentEnvironment" ref="environmentEdit" @close="close"/>
+      <environment-edit :if-create="ifCreate" :project-id="projectId" :environment="currentEnvironment" ref="environmentEdit" :is-read-only="isReadOnly"
+                        @close="close"/>
     </el-container>
   </el-dialog>
 </template>
@@ -20,15 +27,16 @@
   import MsMainContainer from "../../../common/components/MsMainContainer";
   import MsAsideItem from "../../../common/components/MsAsideItem";
   import EnvironmentEdit from "./environment/EnvironmentEdit";
-  import {deepClone, listenGoBack, removeGoBackListener} from "../../../../../common/js/utils";
+  import {deepClone, hasPermission, listenGoBack, removeGoBackListener} from "../../../../../common/js/utils";
   import {Environment, parseEnvironment} from "../model/EnvironmentModel";
+  import MsDialogHeader from "@/business/components/common/components/MsDialogHeader";
 
   export default {
     name: "ApiEnvironmentConfig",
     components: {
       EnvironmentEdit,
       MsAsideItem,
-      MsMainContainer, MsAsideContainer, MsContainer, MsApiCollapseItem, MsApiCollapse, draggable
+      MsMainContainer, MsAsideContainer, MsContainer, MsApiCollapseItem, MsApiCollapse, draggable, MsDialogHeader
     },
     data() {
       return {
@@ -40,23 +48,54 @@
         environmentOperators: [
           {
             icon: 'el-icon-document-copy',
-            func: this.copyEnvironment
+            func: this.copyEnvironment,
+            permissions: this.type === 'project' ?
+              ['PROJECT_ENVIRONMENT:READ+COPY'] : ['WORKSPACE_PROJECT_ENVIRONMENT:READ+COPY']
           },
           {
             icon: 'el-icon-delete',
-            func: this.deleteEnvironment
+            func: this.deleteEnvironment,
+            permissions: this.type === 'project' ?
+              ['PROJECT_ENVIRONMENT:READ+DELETE'] : ['WORKSPACE_PROJECT_ENVIRONMENT:READ+DELETE']
           }
-        ]
+        ],
+        selectEnvironmentId: '',
+        ifCreate: false, //是否是创建环境
+      }
+    },
+    props: {
+      type: {
+        type: String,
+        default() {
+          return "project";
+        }
+      }
+    },
+    computed: {
+      ENV_CREATE() {
+        return this.type === 'project' ?
+          ['PROJECT_ENVIRONMENT:READ+CREATE'] : ['WORKSPACE_PROJECT_ENVIRONMENT:READ+CREATE'];
+      },
+      ENV_EDIT() {
+        return this.type === 'project' ?
+          ['PROJECT_ENVIRONMENT:READ+EDIT'] : ['WORKSPACE_PROJECT_ENVIRONMENT:READ+EDIT'];
+      },
+      isReadOnly() {
+        // 区分 工作空间下的环境相关菜单/项目下的环境相关菜单
+        return this.type === 'project' ?
+          !hasPermission('PROJECT_ENVIRONMENT:READ+EDIT') : !hasPermission('WORKSPACE_PROJECT_ENVIRONMENT:READ+EDIT');
       }
     },
     methods: {
-      open: function (projectId) {
+      open: function (projectId, envId) {
         this.visible = true;
         this.projectId = projectId;
+        this.selectEnvironmentId = envId;
         this.getEnvironments();
         listenGoBack(this.close);
       },
       deleteEnvironment(environment, index) {
+        this.ifCreate = false;
         if (environment.id) {
           this.result = this.$get('/api/environment/delete/' + environment.id, () => {
             this.$success(this.$t('commons.delete_success'));
@@ -68,6 +107,9 @@
         }
       },
       copyEnvironment(environment) {
+        this.ifCreate = false;
+        //点击复制的时候先选择改行，否则会出现解析错误
+        this.environmentSelected(environment);
         this.currentEnvironment = environment;
         if (!environment.id) {
           this.$warning(this.$t('commons.please_save'));
@@ -100,6 +142,7 @@
         return name;
       },
       addEnvironment() {
+        this.ifCreate = true;
         let newEnvironment = new Environment({
           projectId: this.projectId
         });
@@ -114,7 +157,16 @@
           this.result = this.$get('/api/environment/list/' + this.projectId, response => {
             this.environments = response.data;
             if (this.environments.length > 0) {
-              this.$refs.environmentItems.itemSelected(0, this.environments[0]);
+              if (this.selectEnvironmentId) {
+                const index = this.environments.findIndex(e => e.id === this.selectEnvironmentId);
+                if (index !== -1) {
+                  this.$refs.environmentItems.itemSelected(index, this.environments[index]);
+                } else {
+                  this.$refs.environmentItems.itemSelected(0, this.environments[0]);
+                }
+              } else {
+                this.$refs.environmentItems.itemSelected(0, this.environments[0]);
+              }
             } else {
               let item = new Environment({
                 projectId: this.projectId
@@ -128,6 +180,12 @@
       getEnvironment(environment) {
         parseEnvironment(environment);
         this.currentEnvironment = environment;
+        if(this.currentEnvironment.name){
+          this.ifCreate = false;
+        }
+      },
+      save(){
+        this.$refs.environmentEdit.save();
       },
       close() {
         this.$emit('close');

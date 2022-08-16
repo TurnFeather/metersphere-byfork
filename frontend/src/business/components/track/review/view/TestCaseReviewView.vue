@@ -1,38 +1,26 @@
 <template>
-  <ms-container>
+  <div>
+    <ms-test-plan-header-bar>
+      <template v-slot:info>
+        <select-menu
+          :data="testReviews"
+          :current-data="currentReview"
+          :title="$t('test_track.review_view.review')"
+          @dataChange="changeReview"/>
+      </template>
+      <template v-slot:menu>
+        <el-menu v-if="isMenuShow" :active-text-color="color"
+                 class="el-menu-demo header-menu" mode="horizontal" @select="handleSelect"
+                 :default-active="activeIndex">
+          <el-menu-item index="functional">{{ $t('test_track.functional_test_case') }}</el-menu-item>
+        </el-menu>
+      </template>
+    </ms-test-plan-header-bar>
+    <test-review-function v-if="activeIndex === 'functional'" :redirectCharType="redirectCharType"
+                          :clickType="clickType" :review-id="reviewId" :version-enable="versionEnable"
+                          ref="testReviewFunction"/>
+  </div>
 
-    <ms-aside-container>
-      <select-menu
-        :data="testReviews"
-        :current-data="currentReview"
-        :title="$t('test_track.review_view.review')"
-        @dataChange="changeReview"/>
-      <node-tree class="node-tree"
-                 v-loading="result.loading"
-                 @nodeSelectEvent="nodeChange"
-                 @refresh="refresh"
-                 :tree-nodes="treeNodes"
-                 :draggable="false"
-                 ref="nodeTree"/>
-    </ms-aside-container>
-
-    <ms-main-container>
-      <test-review-test-case-list
-        class="table-list"
-        @openTestReviewRelevanceDialog="openTestReviewRelevanceDialog"
-        @refresh="refresh"
-        :review-id="reviewId"
-        :select-node-ids="selectNodeIds"
-        :select-parent-nodes="selectParentNodes"
-        ref="testPlanTestCaseList"/>
-    </ms-main-container>
-
-    <test-review-relevance
-      @refresh="refresh"
-      :review-id="reviewId"
-      ref="testReviewRelevance"/>
-
-  </ms-container>
 </template>
 
 <script>
@@ -42,18 +30,25 @@ import MsMainContainer from "../../../common/components/MsMainContainer";
 import MsAsideContainer from "../../../common/components/MsAsideContainer";
 import MsContainer from "../../../common/components/MsContainer";
 import NodeTree from "../../common/NodeTree";
-import TestReviewTestCaseList from "./components/TestReviewTestCaseList";
 import SelectMenu from "../../common/SelectMenu";
 import TestReviewRelevance from "./components/TestReviewRelevance";
+import MsTestPlanHeaderBar from "@/business/components/track/plan/view/comonents/head/TestPlanHeaderBar";
+import TestReviewFunction from "@/business/components/track/review/view/components/TestReviewFunction";
+import TestReviewApi from "@/business/components/track/review/view/components/TestReviewApi";
+import TestReviewLoad from "@/business/components/track/review/view/components/TestReviewLoad";
+import {getCurrentProjectID, hasLicense} from "@/common/js/utils";
 
 export default {
   name: "TestCaseReviewView",
   components: {
+    TestReviewLoad,
+    TestReviewApi,
+    TestReviewFunction,
+    MsTestPlanHeaderBar,
     MsMainContainer,
     MsAsideContainer,
     MsContainer,
     NodeTree,
-    TestReviewTestCaseList,
     TestReviewRelevance,
     SelectMenu
   },
@@ -64,17 +59,44 @@ export default {
       currentReview: {},
       selectNodeIds: [],
       selectParentNodes: [],
-      treeNodes: []
+      treeNodes: [],
+      currentPlan: {},
+      activeIndex: "functional",
+      isMenuShow: true,
+      //报表跳转过来的参数-通过哪个图表跳转的
+      redirectCharType: '',
+      //报表跳转过来的参数-通过哪种数据跳转的
+      clickType: '',
+      projectId: null,
+      versionEnable: false,
     }
   },
   computed: {
     reviewId: function () {
       return this.$route.params.reviewId;
+    },
+    color: function () {
+      return `var(--primary_color)`
     }
+  },
+  created() {
+    this.$EventBus.$on('projectChange', () => {
+      if (this.$route.name === 'testCaseReviewView') {
+        this.$router.push('/track/review/all');
+      }
+    });
   },
   mounted() {
     this.initData();
     this.openTestCaseEdit(this.$route.path);
+    this.checkVersionEnable();
+  },
+  beforeRouteLeave(to, from, next) {
+    if (!this.$refs.testReviewFunction) {
+      next();
+    } else if (this.$refs.testReviewFunction.handleBeforeRouteLeave(to)) {
+      next();
+    }
   },
   watch: {
     '$route'(to, from) {
@@ -84,14 +106,28 @@ export default {
       this.initData();
     }
   },
+  activated() {
+    this.genRedirectParam();
+  },
   methods: {
-    refresh() {
-      this.selectNodeIds = [];
-      this.selectParentNodes = [];
-      this.$refs.testReviewRelevance.search();
-      this.getNodeTreeByReviewId();
+    handleSelect(key) {
+      this.activeIndex = key;
+    },
+    genRedirectParam() {
+      this.redirectCharType = this.$route.params.charType;
+      this.clickType = this.$route.params.clickType;
+      if (this.redirectCharType != "") {
+        if (this.redirectCharType == 'scenario') {
+          this.activeIndex = 'api';
+        } else if (this.redirectCharType != null && this.redirectCharType != '') {
+          this.activeIndex = this.redirectCharType;
+        }
+      } else {
+        this.activeIndex = "functional";
+      }
     },
     initData() {
+      this.projectId = getCurrentProjectID();
       this.getTestReviews();
       this.getNodeTreeByReviewId();
     },
@@ -108,7 +144,7 @@ export default {
         });
       });
     },
-    nodeChange(nodeIds, pNodes) {
+    nodeChange(node, nodeIds, pNodes) {
       this.selectNodeIds = nodeIds;
       this.selectParentNodes = pNodes;
     },
@@ -134,11 +170,41 @@ export default {
           }
         });
       }
-    }
+    },
+    reloadMenu() {
+      this.isMenuShow = false;
+      this.$nextTick(() => {
+        this.isMenuShow = true;
+      });
+    },
+    checkVersionEnable() {
+      if (!this.projectId) {
+        return;
+      }
+      if (hasLicense()) {
+        this.$get('/project/version/enable/' + this.projectId, response => {
+          this.versionEnable = response.data;
+        });
+      }
+    },
   }
 }
 </script>
 
 <style scoped>
 
+/deep/ .ms-main-container {
+  height: calc(100vh - 80px - 53px);
+}
+
+/deep/ .ms-aside-container {
+  height: calc(100vh - 80px - 53px) !important;
+  margin-top: 1px;
+}
+
+.header-menu.el-menu--horizontal > li {
+  height: 49px;
+  line-height: 50px;
+  color: dimgray;
+}
 </style>

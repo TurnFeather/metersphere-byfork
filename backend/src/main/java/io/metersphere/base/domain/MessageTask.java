@@ -22,11 +22,11 @@ public class MessageTask implements Serializable {
 
     private Boolean isSet;
 
-    private String organizationId;
-
     private String testId;
 
     private Long createTime;
+
+    private String projectId;
 
     private String template;
 

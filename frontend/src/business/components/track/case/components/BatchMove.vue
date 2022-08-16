@@ -1,5 +1,5 @@
 <template>
-  <div v-loading="result.loading">
+  <div v-if="dialogVisible" class="batch-move" v-loading="result.loading">
     <el-dialog :title="this.$t('test_track.case.select_catalog')"
                :visible.sync="dialogVisible"
                :before-close="close"
@@ -15,6 +15,7 @@
           :filter-node-method="filterNode"
           :expand-on-click-node="false"
           highlight-current
+          style="overflow: auto"
           @node-click="nodeClick"
           ref="tree"
         >
@@ -25,21 +26,20 @@
             </span>
             <span class="node-title">{{node.label}}</span>
           </span>
-          </template>
-        </el-tree>
-      </div>
-      <template v-slot:footer>
-        <ms-dialog-footer
-          @cancel="close"
-          @confirm="save"/>
-      </template>
-    </el-dialog>
+        </template>
+      </el-tree>
+    </div>
+    <template v-slot:footer>
+      <ms-dialog-footer
+        @cancel="close"
+        @confirm="save"/>
+    </template>
+  </el-dialog>
   </div>
 </template>
 
 <script>
   import MsDialogFooter from "../../../common/components/MsDialogFooter";
-  import {TrackEvent,LIST_CHANGE} from "@/business/components/common/head/ListEvent";
 
   export default {
     name: "BatchMove",
@@ -57,6 +57,12 @@
         filterText: "",
         result: {},
       }
+    },
+    props: {
+      publicEnable: {
+        type: Boolean,
+        default: false,
+      },
     },
     watch: {
       filterText(val) {
@@ -77,19 +83,19 @@
         }
         let param = {};
         param.nodeId = this.currentKey;
-        this.moduleOptions.forEach(item => {
-          if (item.id === this.currentKey) {
-            param.nodePath = item.path;
-          }
-        });
+        if (this.moduleOptions) {
+          this.moduleOptions.forEach(item => {
+            if (item.id === this.currentKey) {
+              param.nodePath = item.path;
+            }
+          });
+        }
         param.ids = this.selectIds;
-        this.result = this.$post('/test/case/batch/edit', param, () => {
-          this.$success(this.$t('commons.save_success'));
-          this.close();
-          // 发送广播，刷新 head 上的最新列表
-          TrackEvent.$emit(LIST_CHANGE);
-          this.$emit('refresh');
-        });
+        if (this.publicEnable) {
+          this.$emit('copyPublic', param);
+        } else {
+          this.$emit('moveSave', param);
+        }
       },
       refresh() {
         this.$emit("refresh");
@@ -118,6 +124,10 @@
     flex: 1 1 auto;
     padding: 0 5px;
     overflow: hidden;
+  }
+
+  .batch-move {
+    height: 500px;
   }
 
 </style>

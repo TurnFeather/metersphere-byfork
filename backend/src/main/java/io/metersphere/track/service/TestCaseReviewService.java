@@ -1,5 +1,6 @@
 package io.metersphere.track.service;
 
+import com.alibaba.fastjson.JSON;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtProjectMapper;
@@ -17,26 +18,29 @@ import io.metersphere.commons.utils.ServiceUtils;
 import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.controller.request.member.QueryMemberRequest;
 import io.metersphere.dto.BaseSystemConfigDTO;
-import io.metersphere.i18n.Translator;
+import io.metersphere.log.utils.ReflexObjectUtil;
+import io.metersphere.log.vo.DetailColumn;
+import io.metersphere.log.vo.OperatingLogDetails;
+import io.metersphere.log.vo.track.TestCaseReviewReference;
 import io.metersphere.notice.sender.NoticeModel;
 import io.metersphere.notice.service.NoticeSendService;
 import io.metersphere.service.SystemParameterService;
 import io.metersphere.service.UserService;
+import io.metersphere.track.dto.TestCaseDTO;
 import io.metersphere.track.dto.TestCaseReviewDTO;
 import io.metersphere.track.dto.TestReviewCaseDTO;
 import io.metersphere.track.dto.TestReviewDTOWithMetric;
-import io.metersphere.track.request.testreview.QueryCaseReviewRequest;
-import io.metersphere.track.request.testreview.QueryTestReviewRequest;
-import io.metersphere.track.request.testreview.ReviewRelevanceRequest;
-import io.metersphere.track.request.testreview.SaveTestCaseReviewRequest;
+import io.metersphere.track.request.testreview.*;
+import org.apache.commons.beanutils.BeanMap;
 import org.apache.commons.beanutils.BeanUtils;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
 import java.text.SimpleDateFormat;
@@ -51,6 +55,8 @@ public class TestCaseReviewService {
     private TestCaseReviewProjectMapper testCaseReviewProjectMapper;
     @Resource
     private TestCaseReviewUsersMapper testCaseReviewUsersMapper;
+    @Resource
+    private TestCaseReviewFollowMapper testCaseReviewFollowMapper;
     @Resource
     private TestCaseReviewMapper testCaseReviewMapper;
     @Resource
@@ -78,17 +84,10 @@ public class TestCaseReviewService {
     @Resource
     private SystemParameterService systemParameterService;
 
-    public void saveTestCaseReview(SaveTestCaseReviewRequest reviewRequest) {
+    public TestCaseReview saveTestCaseReview(SaveTestCaseReviewRequest reviewRequest) {
         checkCaseReviewExist(reviewRequest);
-        String reviewId = UUID.randomUUID().toString();
-        List<String> projectIds = reviewRequest.getProjectIds();
+        String reviewId = reviewRequest.getId();
         List<String> userIds = reviewRequest.getUserIds();//执行人
-        projectIds.forEach(projectId -> {
-            TestCaseReviewProject testCaseReviewProject = new TestCaseReviewProject();
-            testCaseReviewProject.setProjectId(projectId);
-            testCaseReviewProject.setReviewId(reviewId);
-            testCaseReviewProjectMapper.insertSelective(testCaseReviewProject);
-        });
 
         userIds.forEach(userId -> {
             TestCaseReviewUsers testCaseReviewUsers = new TestCaseReviewUsers();
@@ -97,66 +96,47 @@ public class TestCaseReviewService {
             testCaseReviewUsersMapper.insert(testCaseReviewUsers);
         });
 
+        List<String> follows = reviewRequest.getFollowIds();//关注人
+
+        follows.forEach(followId -> {
+            TestCaseReviewFollow testCaseReviewFollow = new TestCaseReviewFollow();
+            testCaseReviewFollow.setReviewId(reviewId);
+            testCaseReviewFollow.setFollowId(followId);
+            testCaseReviewFollowMapper.insert(testCaseReviewFollow);
+        });
+
         reviewRequest.setId(reviewId);
+        reviewRequest.setCreateUser(SessionUtils.getUserId());
         reviewRequest.setCreateTime(System.currentTimeMillis());
         reviewRequest.setUpdateTime(System.currentTimeMillis());
         reviewRequest.setCreator(SessionUtils.getUser().getId());//创建人
         reviewRequest.setStatus(TestCaseReviewStatus.Prepare.name());
+        if (StringUtils.isBlank(reviewRequest.getProjectId())) {
+            reviewRequest.setProjectId(SessionUtils.getCurrentProjectId());
+        }
         testCaseReviewMapper.insert(reviewRequest);
-        // 发送通知
-        String context = getReviewContext(reviewRequest, NoticeConstants.Event.CREATE);
-        Map<String, Object> paramMap = new HashMap<>(getReviewParamMap(reviewRequest));
-        NoticeModel noticeModel = NoticeModel.builder()
-                .context(context)
-                .relatedUsers(userIds)
-                .subject(Translator.get("test_review_task_notice"))
-                .mailTemplate("ReviewInitiate")
-                .paramMap(paramMap)
-                .event(NoticeConstants.Event.CREATE)
-                .build();
-        noticeSendService.send(NoticeConstants.TaskType.REVIEW_TASK, noticeModel);
+        return reviewRequest;
     }
 
     //评审内容
-    private Map<String, String> getReviewParamMap(SaveTestCaseReviewRequest reviewRequest) {
-        Long startTime = reviewRequest.getCreateTime();
-        Long endTime = reviewRequest.getEndTime();
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        String start = null;
-        String sTime = String.valueOf(startTime);
-        String eTime = String.valueOf(endTime);
-        if (!sTime.equals("null")) {
-            start = sdf.format(new Date(Long.parseLong(sTime)));
-        }
-        String end = null;
-        if (!eTime.equals("null")) {
-            end = sdf.format(new Date(Long.parseLong(eTime)));
-        }
-
-        Map<String, String> paramMap = new HashMap<>();
+    private Map getReviewParamMap(TestCaseReview review) {
+        Map paramMap = new HashMap<>();
         BaseSystemConfigDTO baseSystemConfigDTO = systemParameterService.getBaseInfo();
         paramMap.put("url", baseSystemConfigDTO.getUrl());
-        User user = userMapper.selectByPrimaryKey(reviewRequest.getCreator());
-        paramMap.put("creator", user.getName());
-        paramMap.put("reviewName", reviewRequest.getName());
-        paramMap.put("start", start);
-        paramMap.put("end", end);
-        paramMap.put("id", reviewRequest.getId());
-        String status = "";
-        if (StringUtils.equals(TestPlanStatus.Underway.name(), reviewRequest.getStatus())) {
-            status = "进行中";
-        } else if (StringUtils.equals(TestPlanStatus.Prepare.name(), reviewRequest.getStatus())) {
-            status = "未开始";
-        } else if (StringUtils.equals(TestPlanStatus.Completed.name(), reviewRequest.getStatus())) {
-            status = "已完成";
-        }
-        paramMap.put("status", status);
+        paramMap.putAll(new BeanMap(review));
         return paramMap;
     }
 
     public List<TestCaseReviewDTO> listCaseReview(QueryCaseReviewRequest request) {
         request.setOrders(ServiceUtils.getDefaultOrder(request.getOrders()));
-        request.setProjectId(SessionUtils.getCurrentProjectId());
+        /*String projectId = request.getProjectId();
+        if (StringUtils.isBlank(projectId)) {
+            return new ArrayList<>();
+        }*/
+        //update   reviewerId
+        if(StringUtils.equalsIgnoreCase(request.getReviewerId(),"currentUserId")){
+            request.setReviewerId(SessionUtils.getUserId());
+        }
         return extTestCaseReviewMapper.list(request);
     }
 
@@ -172,6 +152,9 @@ public class TestCaseReviewService {
                 .map(TestCaseReviewProject::getProjectId)
                 .collect(Collectors.toList());
 
+        TestCaseReview testCaseReview = testCaseReviewMapper.selectByPrimaryKey(reviewId);
+        String projectId = testCaseReview.getProjectId();
+        projectIds.add(projectId);
         ProjectExample projectExample = new ProjectExample();
         projectExample.createCriteria().andIdIn(projectIds);
         return projectMapper.selectByExample(projectExample);
@@ -198,29 +181,38 @@ public class TestCaseReviewService {
         return new ArrayList<>();
     }
 
+    public List<User> getFollowByReviewId(TestCaseReview request) {
+        String reviewId = request.getId();
+
+        TestCaseReviewFollowExample testCaseReviewFollowExample = new TestCaseReviewFollowExample();
+        testCaseReviewFollowExample.createCriteria().andReviewIdEqualTo(reviewId);
+        List<TestCaseReviewFollow> testCaseReviewFollows = testCaseReviewFollowMapper.selectByExample(testCaseReviewFollowExample);
+
+        List<String> userIds = testCaseReviewFollows
+                .stream()
+                .map(TestCaseReviewFollow::getFollowId)
+                .collect(Collectors.toList());
+
+        UserExample userExample = new UserExample();
+        UserExample.Criteria criteria = userExample.createCriteria();
+        if (!CollectionUtils.isEmpty(userIds)) {
+            criteria.andIdIn(userIds);
+            return userMapper.selectByExample(userExample);
+        }
+        return new ArrayList<>();
+    }
+
     public List<TestCaseReviewDTO> recent(String currentWorkspaceId) {
         return extTestCaseReviewMapper.listByWorkspaceId(currentWorkspaceId, SessionUtils.getUserId(), SessionUtils.getCurrentProjectId());
     }
 
-    public void editCaseReview(SaveTestCaseReviewRequest testCaseReview) {
+    public TestCaseReview editCaseReview(SaveTestCaseReviewRequest testCaseReview) {
         editCaseReviewer(testCaseReview);
-        editCaseReviewProject(testCaseReview);
+        editCaseRevieweFollow(testCaseReview);
         testCaseReview.setUpdateTime(System.currentTimeMillis());
         checkCaseReviewExist(testCaseReview);
         testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
-        //  发送通知
-        List<String> userIds = new ArrayList<>(testCaseReview.getUserIds());
-        String context = getReviewContext(testCaseReview, NoticeConstants.Event.UPDATE);
-        Map<String, Object> paramMap = new HashMap<>(getReviewParamMap(testCaseReview));
-        NoticeModel noticeModel = NoticeModel.builder()
-                .context(context)
-                .relatedUsers(userIds)
-                .subject(Translator.get("test_review_task_notice"))
-                .mailTemplate("ReviewEnd")
-                .paramMap(paramMap)
-                .event(NoticeConstants.Event.UPDATE)
-                .build();
-        noticeSendService.send(NoticeConstants.TaskType.REVIEW_TASK, noticeModel);
+        return testCaseReviewMapper.selectByPrimaryKey(testCaseReview.getId());
     }
 
     private void editCaseReviewer(SaveTestCaseReviewRequest testCaseReview) {
@@ -247,41 +239,32 @@ public class TestCaseReviewService {
         testCaseReviewUsersMapper.deleteByExample(example);
     }
 
-    private void editCaseReviewProject(SaveTestCaseReviewRequest testCaseReview) {
-        List<String> projectIds = testCaseReview.getProjectIds();
-        String id = testCaseReview.getId();
-        if (!CollectionUtils.isEmpty(projectIds)) {
-            TestCaseReviewProjectExample testCaseReviewProjectExample = new TestCaseReviewProjectExample();
-            testCaseReviewProjectExample.createCriteria().andReviewIdEqualTo(id);
-            List<TestCaseReviewProject> testCaseReviewProjects = testCaseReviewProjectMapper.selectByExample(testCaseReviewProjectExample);
-            List<String> dbProjectIds = testCaseReviewProjects.stream().map(TestCaseReviewProject::getProjectId).collect(Collectors.toList());
-            projectIds.forEach(projectId -> {
-                if (!dbProjectIds.contains(projectId)) {
-                    TestCaseReviewProject testCaseReviewProject = new TestCaseReviewProject();
-                    testCaseReviewProject.setReviewId(id);
-                    testCaseReviewProject.setProjectId(projectId);
-                    testCaseReviewProjectMapper.insert(testCaseReviewProject);
+    public void editCaseRevieweFollow(SaveTestCaseReviewRequest testCaseReview) {
+        // 要更新的follows
+        List<String> follows = testCaseReview.getFollowIds();
+        if (CollectionUtils.isNotEmpty(follows)) {
+            String id = testCaseReview.getId();
+            TestCaseReviewFollowExample testCaseReviewfollowExample = new TestCaseReviewFollowExample();
+            testCaseReviewfollowExample.createCriteria().andReviewIdEqualTo(id);
+            List<TestCaseReviewFollow> testCaseReviewFollows = testCaseReviewFollowMapper.selectByExample(testCaseReviewfollowExample);
+            List<String> dbReviewIds = testCaseReviewFollows.stream().map(TestCaseReviewFollow::getFollowId).collect(Collectors.toList());
+            follows.forEach(followId -> {
+                if (!dbReviewIds.contains(followId)) {
+                    TestCaseReviewFollow caseReviewFollow = new TestCaseReviewFollow();
+                    caseReviewFollow.setFollowId(followId);
+                    caseReviewFollow.setReviewId(id);
+                    testCaseReviewFollowMapper.insertSelective(caseReviewFollow);
                 }
             });
-
-            TestCaseReviewProjectExample example = new TestCaseReviewProjectExample();
-            example.createCriteria().andReviewIdEqualTo(id).andProjectIdNotIn(projectIds);
-            testCaseReviewProjectMapper.deleteByExample(example);
-
-
-            // 关联的项目下的用例idList
-            TestCaseExample testCaseExample = new TestCaseExample();
-            testCaseExample.createCriteria().andProjectIdIn(projectIds);
-            List<TestCase> caseList = testCaseMapper.selectByExample(testCaseExample);
-            List<String> caseIds = caseList.stream().map(TestCase::getId).collect(Collectors.toList());
-
-            TestCaseReviewTestCaseExample testCaseReviewTestCaseExample = new TestCaseReviewTestCaseExample();
-            TestCaseReviewTestCaseExample.Criteria criteria = testCaseReviewTestCaseExample.createCriteria().andReviewIdEqualTo(id);
-            if (!CollectionUtils.isEmpty(caseIds)) {
-                criteria.andCaseIdNotIn(caseIds);
-            }
-            testCaseReviewTestCaseMapper.deleteByExample(testCaseReviewTestCaseExample);
+            TestCaseReviewFollowExample example = new TestCaseReviewFollowExample();
+            example.createCriteria().andReviewIdEqualTo(id).andFollowIdNotIn(follows);
+            testCaseReviewFollowMapper.deleteByExample(example);
+        }else {
+            TestCaseReviewFollowExample example = new TestCaseReviewFollowExample();
+            example.createCriteria().andReviewIdEqualTo(testCaseReview.getId());
+            testCaseReviewFollowMapper.deleteByExample(example);
         }
+
     }
 
     private void checkCaseReviewExist(TestCaseReview testCaseReview) {
@@ -289,7 +272,8 @@ public class TestCaseReviewService {
             TestCaseReviewExample example = new TestCaseReviewExample();
             TestCaseReviewExample.Criteria criteria = example
                     .createCriteria()
-                    .andNameEqualTo(testCaseReview.getName());
+                    .andNameEqualTo(testCaseReview.getName())
+                    .andProjectIdEqualTo(testCaseReview.getProjectId());
 
             if (StringUtils.isNotBlank(testCaseReview.getId())) {
                 criteria.andIdNotEqualTo(testCaseReview.getId());
@@ -302,31 +286,11 @@ public class TestCaseReviewService {
     }
 
     public void deleteCaseReview(String reviewId) {
-        TestCaseReview testCaseReview = getTestReview(reviewId);
         deleteCaseReviewProject(reviewId);
         deleteCaseReviewUsers(reviewId);
+        deleteCaseReviewFollow(reviewId);
         deleteCaseReviewTestCase(reviewId);
         testCaseReviewMapper.deleteByPrimaryKey(reviewId);
-        // 发送通知
-        try {
-            List<String> userIds = new ArrayList<>();
-            userIds.add(SessionUtils.getUser().getId());
-            SaveTestCaseReviewRequest testCaseReviewRequest = new SaveTestCaseReviewRequest();
-            BeanUtils.copyProperties(testCaseReviewRequest, testCaseReview);
-            String context = getReviewContext(testCaseReviewRequest, NoticeConstants.Event.DELETE);
-            Map<String, Object> paramMap = new HashMap<>(getReviewParamMap(testCaseReviewRequest));
-            NoticeModel noticeModel = NoticeModel.builder()
-                    .context(context)
-                    .relatedUsers(userIds)
-                    .subject(Translator.get("test_review_task_notice"))
-                    .mailTemplate("ReviewDelete")
-                    .paramMap(paramMap)
-                    .event(NoticeConstants.Event.DELETE)
-                    .build();
-            noticeSendService.send(NoticeConstants.TaskType.REVIEW_TASK, noticeModel);
-        } catch (Exception e) {
-            LogUtil.error(e);
-        }
     }
 
     private void deleteCaseReviewProject(String reviewId) {
@@ -341,6 +305,12 @@ public class TestCaseReviewService {
         testCaseReviewUsersMapper.deleteByExample(testCaseReviewUsersExample);
     }
 
+    private void deleteCaseReviewFollow(String reviewId) {
+        TestCaseReviewFollowExample testCaseReviewFollowExample = new TestCaseReviewFollowExample();
+        testCaseReviewFollowExample.createCriteria().andReviewIdEqualTo(reviewId);
+        testCaseReviewFollowMapper.deleteByExample(testCaseReviewFollowExample);
+    }
+
     private void deleteCaseReviewTestCase(String reviewId) {
         TestCaseReviewTestCaseExample testCaseReviewTestCaseExample = new TestCaseReviewTestCaseExample();
         testCaseReviewTestCaseExample.createCriteria().andReviewIdEqualTo(reviewId);
@@ -348,68 +318,56 @@ public class TestCaseReviewService {
     }
 
     public List<TestCaseReview> listCaseReviewAll() {
-        TestCaseReviewProjectExample reviewProjectExample = new TestCaseReviewProjectExample();
-        TestCaseReviewProjectExample.Criteria criteria = reviewProjectExample.createCriteria();
         if (StringUtils.isNotBlank(SessionUtils.getCurrentProjectId())) {
-            criteria.andProjectIdEqualTo(SessionUtils.getCurrentProjectId());
-            List<TestCaseReviewProject> testCaseReviewProjects = testCaseReviewProjectMapper.selectByExample(reviewProjectExample);
-            if (!CollectionUtils.isEmpty(testCaseReviewProjects)) {
-                List<String> caseReviewIds = testCaseReviewProjects.stream().map(TestCaseReviewProject::getReviewId).collect(Collectors.toList());
-                TestCaseReviewExample testCaseReviewExample = new TestCaseReviewExample();
-                testCaseReviewExample.createCriteria().andIdIn(caseReviewIds);
-                return testCaseReviewMapper.selectByExample(testCaseReviewExample);
-            }
+            TestCaseReviewExample testCaseReviewExample = new TestCaseReviewExample();
+            testCaseReviewExample.createCriteria().andProjectIdEqualTo(SessionUtils.getCurrentProjectId());
+            return testCaseReviewMapper.selectByExample(testCaseReviewExample);
         }
-
         return new ArrayList<>();
     }
 
     public void testReviewRelevance(ReviewRelevanceRequest request) {
-        String reviewId = request.getReviewId();
-        List<String> userIds = getTestCaseReviewerIds(reviewId);
-
-        String creator = "";
-        TestCaseReview review = testCaseReviewMapper.selectByPrimaryKey(reviewId);
-        if (review != null) {
-            creator = review.getCreator();
-        }
-
-        String currentId = SessionUtils.getUser().getId();
-        if (!userIds.contains(currentId) && !StringUtils.equals(creator, currentId)) {
-            MSException.throwException("没有权限，不能关联用例！");
-        }
-
         List<String> testCaseIds = request.getTestCaseIds();
 
         if (testCaseIds.isEmpty()) {
             return;
         }
+
         // 如果是关联全部指令则根据条件查询未关联的案例
         if (testCaseIds.get(0).equals("all")) {
-            List<TestCase> testCases = extTestCaseMapper.getTestCaseByNotInReview(request.getRequest());
+            List<TestCaseDTO> testCases = extTestCaseMapper.getTestCaseByNotInReview(request.getRequest());
             if (!testCases.isEmpty()) {
                 testCaseIds = testCases.stream().map(testCase -> testCase.getId()).collect(Collectors.toList());
             }
         }
 
+        // 尽量保持与用例顺序一致
+        Collections.reverse(testCaseIds);
+
         SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
         TestCaseReviewTestCaseMapper batchMapper = sqlSession.getMapper(TestCaseReviewTestCaseMapper.class);
-
+        Long nextOrder = ServiceUtils.getNextOrder(request.getReviewId(), extTestReviewCaseMapper::getLastOrder);
         if (!testCaseIds.isEmpty()) {
-            testCaseIds.forEach(caseId -> {
+            for (String caseId : testCaseIds) {
                 TestCaseReviewTestCase caseReview = new TestCaseReviewTestCase();
                 caseReview.setId(UUID.randomUUID().toString());
                 caseReview.setReviewer(SessionUtils.getUser().getId());
+                caseReview.setCreateUser(SessionUtils.getUserId());
                 caseReview.setCaseId(caseId);
                 caseReview.setCreateTime(System.currentTimeMillis());
                 caseReview.setUpdateTime(System.currentTimeMillis());
                 caseReview.setReviewId(request.getReviewId());
                 caseReview.setStatus(TestCaseReviewStatus.Prepare.name());
+                caseReview.setOrder(nextOrder);
                 batchMapper.insert(caseReview);
-            });
+                nextOrder += ServiceUtils.ORDER_STEP;
+            }
         }
 
         sqlSession.flushStatements();
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
 
         TestCaseReview testCaseReview = testCaseReviewMapper.selectByPrimaryKey(request.getReviewId());
         if (StringUtils.equals(testCaseReview.getStatus(), TestCaseReviewStatus.Prepare.name())
@@ -440,26 +398,31 @@ public class TestCaseReviewService {
                 testCaseReview.setStatus(TestCaseReviewStatus.Underway.name());
                 testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
                 return;
+            } else if (StringUtils.equals(status, TestReviewCaseStatus.UnPass.name())) {
+                testCaseReview.setStatus(TestCaseReviewStatus.Finished.name());
+                testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
+                return;
             }
         }
         testCaseReview.setStatus(TestCaseReviewStatus.Completed.name());
         testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
         SaveTestCaseReviewRequest testCaseReviewRequest = new SaveTestCaseReviewRequest();
         TestCaseReview _testCaseReview = testCaseReviewMapper.selectByPrimaryKey(reviewId);
-        List<String> userIds = new ArrayList<>();
-        userIds.add(_testCaseReview.getCreator());
+
         if (StringUtils.equals(TestCaseReviewStatus.Completed.name(), _testCaseReview.getStatus())) {
             try {
                 BeanUtils.copyProperties(testCaseReviewRequest, _testCaseReview);
                 String context = getReviewContext(testCaseReviewRequest, NoticeConstants.Event.UPDATE);
-                Map<String, Object> paramMap = new HashMap<>(getReviewParamMap(testCaseReviewRequest));
+                Map<String, Object> paramMap = new HashMap<>(getReviewParamMap(_testCaseReview));
+                paramMap.put("operator", SessionUtils.getUser().getName());
                 NoticeModel noticeModel = NoticeModel.builder()
+                        .operator(SessionUtils.getUserId())
                         .context(context)
-                        .relatedUsers(userIds)
-                        .subject(Translator.get("test_review_task_notice"))
-                        .mailTemplate("ReviewEnd")
+                        .subject("测试评审通知")
+                        .mailTemplate("track/ReviewEnd")
                         .paramMap(paramMap)
-                        .event(NoticeConstants.Event.UPDATE)
+                        .event(NoticeConstants.Event.COMPLETE)
+                        .status(TestCaseReviewStatus.Completed.name())
                         .build();
                 noticeSendService.send(NoticeConstants.TaskType.REVIEW_TASK, noticeModel);
             } catch (Exception e) {
@@ -468,7 +431,10 @@ public class TestCaseReviewService {
         }
     }
 
-    public List<TestReviewDTOWithMetric> listRelateAll(String type) {
+    public List<TestReviewDTOWithMetric> listRelateAll(ReviewRelateRequest relateRequest) {
+        String type = relateRequest.getType();
+        String projectId = relateRequest.getProjectId();
+        String workspaceId = relateRequest.getWorkspaceId();
         SessionUser user = SessionUtils.getUser();
         QueryTestReviewRequest request = new QueryTestReviewRequest();
         if (StringUtils.equals("creator", type)) {
@@ -476,11 +442,12 @@ public class TestCaseReviewService {
         } else {
             request.setReviewerId(user.getId());
         }
-        request.setWorkspaceId(SessionUtils.getCurrentWorkspaceId());
-        request.setProjectId(SessionUtils.getCurrentProjectId());
-        request.setReviewIds(extTestReviewCaseMapper.findRelateTestReviewId(user.getId(), SessionUtils.getCurrentWorkspaceId(), user.getLastProjectId()));
 
-        List<String> projectIds = extProjectMapper.getProjectIdByWorkspaceId(SessionUtils.getCurrentWorkspaceId());
+        request.setWorkspaceId(workspaceId);
+        request.setProjectId(projectId);
+        request.setReviewIds(extTestReviewCaseMapper.findRelateTestReviewId(user.getId(), workspaceId, projectId));
+
+        List<String> projectIds = extProjectMapper.getProjectIdByWorkspaceId(workspaceId);
 
         List<TestReviewDTOWithMetric> testReviews = extTestCaseReviewMapper.listRelate(request);
 
@@ -504,7 +471,7 @@ public class TestCaseReviewService {
                 testCaseReviewUsersExample.createCriteria().andReviewIdEqualTo(testReview.getId());
                 List<String> userIds = testCaseReviewUsersMapper.selectByExample(testCaseReviewUsersExample)
                         .stream().map(TestCaseReviewUsers::getUserId).collect(Collectors.toList());
-                String reviewName = getReviewName(userIds);
+                String reviewName = getReviewName(userIds, projectId);
                 testReview.setReviewerName(reviewName);
 
                 User u = userMapper.selectByPrimaryKey(testReview.getCreator());
@@ -532,10 +499,10 @@ public class TestCaseReviewService {
         return testReviews;
     }
 
-    private String getReviewName(List<String> userIds) {
+    private String getReviewName(List<String> userIds, String projectId) {
         QueryMemberRequest queryMemberRequest = new QueryMemberRequest();
-        queryMemberRequest.setWorkspaceId(SessionUtils.getCurrentWorkspaceId());
-        Map<String, String> userMap = userService.getMemberList(queryMemberRequest)
+        queryMemberRequest.setProjectId(projectId);
+        Map<String, String> userMap = userService.getProjectMember(queryMemberRequest)
                 .stream().collect(Collectors.toMap(User::getId, User::getName));
         StringBuilder stringBuilder = new StringBuilder();
         String name = "";
@@ -546,7 +513,9 @@ public class TestCaseReviewService {
                     stringBuilder.append(userMap.get(id)).append("、");
                 }
             }
-            name = stringBuilder.substring(0, stringBuilder.length() - 1);
+            if (StringUtils.isNotBlank(stringBuilder)) {
+                name = stringBuilder.substring(0, stringBuilder.length() - 1);
+            }
         }
         return name;
     }
@@ -599,5 +568,67 @@ public class TestCaseReviewService {
         return context;
     }
 
+    public String getLogDetails(String id) {
+        TestCaseReview review = testCaseReviewMapper.selectByPrimaryKey(id);
+        if (review != null) {
+            List<DetailColumn> columns = ReflexObjectUtil.getColumns(review, TestCaseReviewReference.testCaseReviewColumns);
+
+            String reviewId = review.getId();
+            TestCaseReviewUsersExample testCaseReviewUsersExample = new TestCaseReviewUsersExample();
+            testCaseReviewUsersExample.createCriteria().andReviewIdEqualTo(reviewId);
+            List<TestCaseReviewUsers> testCaseReviewUsers = testCaseReviewUsersMapper.selectByExample(testCaseReviewUsersExample);
+
+            List<String> userIds = testCaseReviewUsers.stream().map(TestCaseReviewUsers::getUserId).collect(Collectors.toList());
+            UserExample example = new UserExample();
+            example.createCriteria().andIdIn(userIds);
+            List<User> users = userMapper.selectByExample(example);
+            List<String> userNames = users.stream().map(User::getName).collect(Collectors.toList());
+
+            DetailColumn column = new DetailColumn("评审人", "reviewUser", String.join(",", userNames), null);
+            columns.add(column);
+
+            TestCaseReviewFollowExample testCaseReviewFollowExample = new TestCaseReviewFollowExample();
+            testCaseReviewFollowExample.createCriteria().andReviewIdEqualTo(reviewId);
+            List<TestCaseReviewFollow> testCaseReviewFollows = testCaseReviewFollowMapper.selectByExample(testCaseReviewFollowExample);
+
+            List<String> follows = testCaseReviewFollows.stream().map(TestCaseReviewFollow::getFollowId).collect(Collectors.toList());
+            //UserExample example = new UserExample();
+            example.createCriteria().andIdIn(follows);
+            List<User> follow = userMapper.selectByExample(example);
+            List<String> followNames = follow.stream().map(User::getName).collect(Collectors.toList());
+
+            DetailColumn columnFollow = new DetailColumn("关注人", "reviewFollow", String.join(",", followNames), null);
+            columns.add(columnFollow);
+            OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(id), review.getProjectId(), review.getName(), review.getCreateUser(), columns);
+            return JSON.toJSONString(details);
+        }
+        return null;
+    }
+
+    public String getLogDetails(ReviewRelevanceRequest request) {
+        List<String> testCaseIds = request.getTestCaseIds();
+        List<String> names = new ArrayList<>();
+        if (testCaseIds.get(0).equals("all")) {
+            List<TestCaseDTO> testCases = extTestCaseMapper.getTestCaseByNotInReview(request.getRequest());
+            if (!testCases.isEmpty()) {
+                names = testCases.stream().map(TestCase::getName).collect(Collectors.toList());
+                testCaseIds = testCases.stream().map(testCase -> testCase.getId()).collect(Collectors.toList());
+            }
+        } else {
+            TestCaseExample example = new TestCaseExample();
+            example.createCriteria().andIdIn(testCaseIds);
+            List<TestCase> cases = testCaseMapper.selectByExample(example);
+            if (CollectionUtils.isNotEmpty(cases)) {
+                names = cases.stream().map(TestCase::getName).collect(Collectors.toList());
+            }
+        }
+        TestCaseReview caseReview = testCaseReviewMapper.selectByPrimaryKey(request.getReviewId());
+        if (caseReview != null) {
+            List<DetailColumn> columns = new LinkedList<>();
+            OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(testCaseIds), caseReview.getProjectId(), String.join(",", names) + " 关联到 " + "【" + caseReview.getName() + "】", caseReview.getCreateUser(), columns);
+            return JSON.toJSONString(details);
+        }
+        return null;
+    }
 
 }

@@ -1,23 +1,29 @@
 package io.metersphere.service;
 
+import com.alibaba.fastjson.JSON;
 import io.metersphere.api.jmeter.NewDriverManager;
 import io.metersphere.base.domain.JarConfig;
 import io.metersphere.base.domain.JarConfigExample;
 import io.metersphere.base.mapper.JarConfigMapper;
 import io.metersphere.commons.exception.MSException;
-import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.commons.utils.FileUtils;
 import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.i18n.Translator;
+import io.metersphere.log.utils.ReflexObjectUtil;
+import io.metersphere.log.vo.DetailColumn;
+import io.metersphere.log.vo.OperatingLogDetails;
+import io.metersphere.log.vo.system.SystemReference;
 import org.apache.commons.lang3.StringUtils;
-import org.aspectj.util.FileUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
-import java.io.*;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -42,13 +48,30 @@ public class JarConfigService {
         return jarConfigMapper.selectByExample(example);
     }
 
+    public List<JarConfig> searchList(JarConfig jarConfig) {
+        JarConfigExample nameExample = new JarConfigExample();
+        JarConfigExample jarExample = new JarConfigExample();
+        if (StringUtils.isNotBlank(jarConfig.getName())) {
+            nameExample.createCriteria().andNameLike("%" + jarConfig.getName() + "%");
+            jarExample.createCriteria().andFileNameLike("%" + jarConfig.getName() + "%");
+        }   //  根据jar包的文件名和自定义名称查找
+        nameExample.setOrderByClause("update_time desc");
+        jarExample.setOrderByClause("update_time desc");
+        List<JarConfig> jarConfigList = jarConfigMapper.selectByExample(jarExample);
+        //  合并两个查找结果并去重，按时间降序
+        jarConfigList.addAll(jarConfigMapper.selectByExample(nameExample));
+        jarConfigList = jarConfigList.stream().distinct().collect(Collectors.toList());
+        Collections.sort(jarConfigList, Comparator.comparing(JarConfig::getUpdateTime).reversed());
+        return jarConfigList;
+    }
+
     public JarConfig get(String id) {
         return jarConfigMapper.selectByPrimaryKey(id);
     }
 
     public void delete(String id) {
         JarConfig JarConfig = jarConfigMapper.selectByPrimaryKey(id);
-        deleteJarFile(JarConfig.getPath());
+        FileUtils.deleteFile(JarConfig.getPath());
         jarConfigMapper.deleteByPrimaryKey(id);
     }
 
@@ -64,13 +87,16 @@ public class JarConfigService {
         }
         jarConfigMapper.updateByPrimaryKey(jarConfig);
         if (file != null) {
-            deleteJarFile(deletePath);
-            createJarFiles(file);
+            FileUtils.deleteFile(deletePath);
+            FileUtils.uploadFile(file, JAR_FILE_DIR);
             NewDriverManager.loadJar(jarConfig.getPath());
         }
     }
 
     public String add(JarConfig jarConfig, MultipartFile file) {
+        if (file != null && !file.getOriginalFilename().endsWith(".jar")) {
+            MSException.throwException("上传文件类型错误，请上传正确jar文件");
+        }
         jarConfig.setId(UUID.randomUUID().toString());
         jarConfig.setCreator(SessionUtils.getUser().getId());
         jarConfig.setModifier(SessionUtils.getUser().getId());
@@ -81,48 +107,13 @@ public class JarConfigService {
         jarConfig.setPath(getJarPath(file));
         jarConfig.setFileName(file.getOriginalFilename());
         jarConfigMapper.insert(jarConfig);
-        createJarFiles(file);
+        FileUtils.uploadFile(file, JAR_FILE_DIR);
         NewDriverManager.loadJar(jarConfig.getPath());
         return jarConfig.getId();
     }
 
-    public void deleteJarFiles(String testId) {
-        File file = new File(JAR_FILE_DIR + "/" + testId);
-        FileUtil.deleteContents(file);
-        if (file.exists()) {
-            file.delete();
-        }
-    }
-
-    public void deleteJarFile(String path) {
-        File file = new File(path);
-        if (file.exists()) {
-            file.delete();
-        }
-    }
-
     public String getJarPath(MultipartFile file) {
         return JAR_FILE_DIR + "/" + file.getOriginalFilename();
-    }
-
-    private String createJarFiles(MultipartFile jar) {
-        if (jar == null) {
-            return null;
-        }
-        File testDir = new File(JAR_FILE_DIR);
-        if (!testDir.exists()) {
-            testDir.mkdirs();
-        }
-        String filePath = testDir + "/" + jar.getOriginalFilename();
-        File file = new File(filePath);
-        try (InputStream in = jar.getInputStream(); OutputStream out = new FileOutputStream(file)) {
-            file.createNewFile();
-            FileUtil.copyStream(in, out);
-        } catch (IOException e) {
-            LogUtil.error(e.getMessage(), e);
-            MSException.throwException(Translator.get("upload_fail"));
-        }
-        return filePath;
     }
 
     private void checkExist(JarConfig jarConfig) {
@@ -138,4 +129,15 @@ public class JarConfigService {
             }
         }
     }
+
+    public String getLogDetails(String id) {
+        JarConfig jarConfig = jarConfigMapper.selectByPrimaryKey(id);
+        if (jarConfig != null) {
+            List<DetailColumn> columns = ReflexObjectUtil.getColumns(jarConfig, SystemReference.jarColumns);
+            OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(jarConfig.getId()), null, jarConfig.getName(), jarConfig.getCreator(), columns);
+            return JSON.toJSONString(details);
+        }
+        return null;
+    }
+
 }

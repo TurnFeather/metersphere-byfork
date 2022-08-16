@@ -1,18 +1,32 @@
 <template>
-  <ms-tip-button
-    :disabled="disabled || isReadOnly"
-    @click="exec"
-    @clickStop="clickStop"
-    :type="type"
-    :tip="tip"
-    :icon="icon" size="mini" circle/>
+  <el-tooltip :content="tip" v-if=isDivButton
+              placement="bottom"
+              :enterable="false"
+              effect="dark">
+    <el-button @click="exec"
+               @keydown.enter.native.prevent
+               type="primary"
+               :disabled="isReadOnly"
+               circle
+               style="color:white;padding: 0px 0.1px;width: 28px;height: 28px;"
+               size="mini">
+      <div style="transform: scale(0.8)">
+        <span style="margin-left: -4px;line-height: 27px;">{{ tip }}</span>
+      </div>
+    </el-button>
+  </el-tooltip>
+  <ms-tip-button v-else
+                 :disabled="disabled || isReadOnly"
+                 @click="exec"
+                 @clickStop="clickStop"
+                 :type="type"
+                 :tip="tip"
+                 :icon="icon" size="mini" circle/>
 </template>
 
 <script>
   import MsTableButton from "./MsTableButton";
   import MsTipButton from "./MsTipButton";
-  import {checkoutTestManagerOrTestUser, hasRoles} from "../../../../common/js/utils";
-  import {ROLE_TEST_MANAGER, ROLE_TEST_USER} from "../../../../common/js/constants";
   export default {
     name: "MsTableOperatorButton",
     components: {MsTipButton, MsTableButton},
@@ -22,6 +36,10 @@
       }
     },
     props: {
+      isDivButton: {
+        type: Boolean,
+        default: false,
+      },
       icon: {
         type: String,
         default: 'el-icon-question'
@@ -42,11 +60,6 @@
         default: false
       }
     },
-    mounted() {
-      if (this.isTesterPermission && !checkoutTestManagerOrTestUser()) {
-        this.isReadOnly = true;
-      }
-    },
     methods: {
       exec() {
         this.$emit('exec');
@@ -59,4 +72,5 @@
 </script>
 
 <style scoped>
+
 </style>

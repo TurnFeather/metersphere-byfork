@@ -10,12 +10,13 @@ public class MsAssertionJsonPath extends MsAssertionType {
     private String expect;
     private String expression;
     private String description;
+    private String option = "REGEX";
 
     public MsAssertionJsonPath() {
         setType(MsAssertionType.JSON_PATH);
     }
 
     public boolean isValid() {
-        return StringUtils.isNotBlank(expression);
+        return StringUtils.isNotBlank(expression) && isEnable();
     }
 }

@@ -1,8 +1,8 @@
 <template>
-  <div>
+  <div v-loading="isReloadData">
     <el-row>
-      <el-col :span="21" style="padding-bottom: 20px">
-        <div style="border:1px #DCDFE6 solid; height: 100%;border-radius: 4px ;width: 100% ;margin: 20px">
+      <el-col :span="spanNum" style="padding-bottom: 20px">
+        <div style="border:1px #DCDFE6 solid; height: 100%;border-radius: 4px ;width: 100% ;">
           <el-form :model="request" :rules="rules" ref="request" label-width="100px" :disabled="isReadOnly" style="margin: 10px">
             <el-row>
               <el-col :span="8">
@@ -11,14 +11,14 @@
                              :placeholder="$t('api_test.definition.request.run_env')"
                              @change="environmentChange" clearable>
                     <el-option v-for="(environment, index) in environments" :key="index"
-                               :label="environment.name + (environment.config.httpConfig.socket ? (': ' + environment.config.httpConfig.protocol + '://' + environment.config.httpConfig.socket) : '')"
+                               :label="environment.name"
                                :value="environment.id"/>
-                    <el-button class="environment-button" size="mini" type="primary" @click="openEnvironmentConfig">
+                    <el-button class="environment-button" size="small" type="primary" @click="openEnvironmentConfig">
                       {{ $t('api_test.environment.environment_config') }}
                     </el-button>
                     <template v-slot:empty>
                       <div class="empty-environment">
-                        <el-button class="environment-button" size="mini" type="primary" @click="openEnvironmentConfig">
+                        <el-button class="environment-button" size="small" type="primary" @click="openEnvironmentConfig">
                           {{ $t('api_test.environment.environment_config') }}
                         </el-button>
                       </div>
@@ -27,9 +27,9 @@
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item :label="$t('api_test.request.sql.dataSource')" prop="dataSource" style="margin-left: 10px">
-                  <el-select v-model="request.dataSource" size="small">
-                    <el-option v-for="(item, index) in databaseConfigsOptions" :key="index" :value="item" :label="item.name"/>
+                <el-form-item :label="$t('api_test.request.sql.dataSource')" prop="dataSourceId" style="margin-left: 10px">
+                  <el-select v-model="request.dataSourceId" size="small" @change="reload">
+                    <el-option v-for="(item, index) in databaseConfigsOptions" :key="index" :value="item.id" :label="item.name"/>
                   </el-select>
                 </el-form-item>
 
@@ -43,50 +43,63 @@
 
 
             <el-form-item :label="$t('api_test.request.sql.result_variable')" prop="resultVariable">
-              <el-input v-model="request.resultVariable" maxlength="300" show-word-limit/>
+              <el-input v-model="request.resultVariable" maxlength="500" show-word-limit size="small"/>
             </el-form-item>
 
             <el-form-item :label="$t('api_test.request.sql.variable_names')" prop="variableNames">
-              <el-input v-model="request.variableNames" maxlength="300" show-word-limit/>
+              <el-input v-model="request.variableNames" maxlength="500" show-word-limit size="small"/>
             </el-form-item>
 
-            <el-tabs v-model="activeName">
-              <el-tab-pane :label="$t('api_test.scenario.variables')" name="variables">
+            <el-tabs v-model="activeName" @tab-click="tabClick">
+              <el-tab-pane :label="$t('api_test.scenario.variables')" name="variables" v-if="isBodyShow">
                 <ms-api-scenario-variables :is-read-only="isReadOnly" :items="request.variables"
                                            :description="$t('api_test.scenario.kv_description')"/>
               </el-tab-pane>
               <el-tab-pane :label="$t('api_test.request.sql.sql_script')" name="sql">
                 <div class="sql-content">
-                  <ms-code-edit mode="sql" :read-only="isReadOnly" :modes="['sql']" :data.sync="request.query" theme="eclipse" ref="codeEdit"/>
+                  <ms-code-edit mode="sql" :read-only="isReadOnly" :modes="['sql']" :data.sync="request.query"
+                                theme="eclipse" ref="codeEdit"/>
                 </div>
               </el-tab-pane>
+              <!-- 脚本步骤/断言步骤 -->
+              <el-tab-pane :label="$t('api_test.definition.request.pre_operation')" name="preOperate" v-if="showScript">
+                <span class="item-tabs" effect="dark" placement="top-start" slot="label">
+                  {{ $t('api_test.definition.request.pre_operation') }}
+                  <div class="el-step__icon is-text ms-api-col ms-header" v-if="request.preSize > 0">
+                    <div class="el-step__icon-inner">{{ request.preSize }}</div>
+                  </div>
+                </span>
+                <ms-jmx-step :request="request" :apiId="request.id" :response="response" :tab-type="'pre'"
+                             ref="preStep"/>
+              </el-tab-pane>
+              <el-tab-pane :label="$t('api_test.definition.request.post_operation')" name="postOperate"
+                           v-if="showScript">
+                  <span class="item-tabs" effect="dark" placement="top-start" slot="label">
+                  {{ $t('api_test.definition.request.post_operation') }}
+                  <div class="el-step__icon is-text ms-api-col ms-header" v-if="request.postSize > 0">
+                    <div class="el-step__icon-inner">{{ request.postSize }}</div>
+                  </div>
+                  </span>
+                <ms-jmx-step :request="request" :apiId="request.id" :response="response" :tab-type="'post'"
+                             ref="postStep"/>
+              </el-tab-pane>
+              <el-tab-pane :label="$t('api_test.definition.request.assertions_rule')" name="assertionsRule"
+                           v-if="showScript">
+                  <span class="item-tabs" effect="dark" placement="top-start" slot="label">
+                  {{ $t('api_test.definition.request.assertions_rule') }}
+                  <div class="el-step__icon is-text ms-api-col ms-header" v-if="request.ruleSize > 0">
+                    <div class="el-step__icon-inner">{{ request.ruleSize }}</div>
+                  </div>
+                  </span>
+                <ms-jmx-step :request="request" :apiId="request.id" :response="response" @reload="reloadBody"
+                             :tab-type="'assertionsRule'" ref="assertionsRule"/>
+              </el-tab-pane>
+
             </el-tabs>
           </el-form>
         </div>
-        <div v-for="row in request.hashTree" :key="row.id" v-loading="isReloadData" style="margin-left: 20px;width: 100%">
-          <!-- 前置脚本 -->
-          <ms-jsr233-processor v-if="row.label ==='JSR223 PreProcessor'" @copyRow="copyRow" @remove="remove" :is-read-only="false" :title="$t('api_test.definition.request.pre_script')" style-type="color: #B8741A;background-color: #F9F1EA"
-                               :jsr223-processor="row"/>
-          <!--后置脚本-->
-          <ms-jsr233-processor v-if="row.label ==='JSR223 PostProcessor'" @copyRow="copyRow" @remove="remove" :is-read-only="false" :title="$t('api_test.definition.request.post_script')" style-type="color: #783887;background-color: #F2ECF3"
-                               :jsr223-processor="row"/>
-          <!--断言规则-->
-          <ms-api-assertions v-if="row.type==='Assertions'" @copyRow="copyRow" @remove="remove" :is-read-only="isReadOnly" :assertions="row"/>
-          <!--提取规则-->
-          <ms-api-extract :is-read-only="isReadOnly" @copyRow="copyRow" @remove="remove" v-if="row.type==='Extract'" :extract="row"/>
-
-        </div>
       </el-col>
-      <el-col :span="3" class="ms-left-cell">
 
-        <el-button class="ms-left-buttion" size="small" style="color: #B8741A;background-color: #F9F1EA" @click="addPre">+{{$t('api_test.definition.request.pre_script')}}</el-button>
-        <br/>
-        <el-button class="ms-left-buttion" size="small" style="color: #783887;background-color: #F2ECF3" @click="addPost">+{{$t('api_test.definition.request.post_script')}}</el-button>
-        <br/>
-        <el-button class="ms-left-buttion" size="small" style="color: #A30014;background-color: #F7E6E9" @click="addAssertions">+{{$t('api_test.definition.request.assertions_rule')}}</el-button>
-        <br/>
-        <el-button class="ms-left-buttion" size="small" style="color: #015478;background-color: #E6EEF2" @click="addExtract">+{{$t('api_test.definition.request.extract_param')}}</el-button>
-      </el-col>
     </el-row>
 
     <!-- 环境 -->
@@ -99,27 +112,37 @@
   import MsApiAssertions from "../../assertion/ApiAssertions";
   import MsApiExtract from "../../extract/ApiExtract";
   import ApiRequestMethodSelect from "../../collapse/ApiRequestMethodSelect";
-  import MsJsr233Processor from "../../processor/Jsr233Processor";
   import MsCodeEdit from "../../../../../common/components/MsCodeEdit";
   import MsApiScenarioVariables from "../../ApiScenarioVariables";
   import {createComponent} from "../../jmeter/components";
   import {Assertions, Extract} from "../../../model/ApiTestModel";
   import {parseEnvironment} from "../../../model/EnvironmentModel";
-  import ApiEnvironmentConfig from "../../environment/ApiEnvironmentConfig";
+  import ApiEnvironmentConfig from "@/business/components/api/test/components/ApiEnvironmentConfig";
   import {getCurrentProjectID} from "@/common/js/utils";
   import {getUUID} from "@/common/js/utils";
+  import MsJsr233Processor from "../../../../automation/scenario/component/Jsr233Processor";
+  import MsJmxStep from "../../step/JmxStep";
+  import {stepCompute, hisDataProcessing} from "@/business/components/api/definition/api-definition";
+
 
   export default {
     name: "MsDatabaseConfig",
     components: {
+      MsJsr233Processor,
       MsApiScenarioVariables,
       MsCodeEdit,
-      MsJsr233Processor, ApiRequestMethodSelect, MsApiExtract, MsApiAssertions, MsApiKeyValue, ApiEnvironmentConfig
+      ApiRequestMethodSelect, MsApiExtract, MsApiAssertions, MsApiKeyValue, ApiEnvironmentConfig,
+      MsJmxStep
     },
     props: {
       request: {},
       basisData: {},
+      response: {},
       moduleOptions: Array,
+      showScript: {
+        type: Boolean,
+        default: true,
+      },
       isReadOnly: {
         type: Boolean,
         default: false
@@ -127,39 +150,64 @@
     },
     data() {
       return {
+        spanNum: 24,
         environments: [],
+        isBodyShow: true,
+        currentEnvironment: {},
         databaseConfigsOptions: [],
         isReloadData: false,
         activeName: "variables",
-        rules: {
-          environmentId: [{required: true, message: this.$t('test_track.case.input_maintainer'), trigger: 'change'}],
-          dataSource: [{required: true, message: this.$t('api_test.request.sql.dataSource'), trigger: 'change'}],
+        rules: {},
+      }
+    },
+    watch: {
+      'request.dataSourceId'() {
+        this.setDataSource();
+      },
+      'request.hashTree': {
+        handler(v) {
+          this.initStepSize(this.request.hashTree);
         },
+        deep: true
       }
     },
     created() {
       this.getEnvironments();
+      if (this.request.hashTree) {
+        this.initStepSize(this.request.hashTree);
+        this.historicalDataProcessing(this.request.hashTree);
+      }
+    },
+    computed: {
+      projectId() {
+        return getCurrentProjectID();
+      },
     },
     methods: {
-      addPre() {
-        let jsr223PreProcessor = createComponent("JSR223PreProcessor");
-        this.request.hashTree.push(jsr223PreProcessor);
-        this.reload();
+      tabClick() {
+        if (this.activeName === 'preOperate') {
+          this.$refs.preStep.filter();
+        }
+        if (this.activeName === 'postOperate') {
+          this.$refs.postStep.filter();
+        }
+        if (this.activeName === 'assertionsRule') {
+          this.$refs.assertionsRule.filter();
+        }
       },
-      addPost() {
-        let jsr223PostProcessor = createComponent("JSR223PostProcessor");
-        this.request.hashTree.push(jsr223PostProcessor);
-        this.reload();
+      historicalDataProcessing(array) {
+        hisDataProcessing(array, this.request);
       },
-      addAssertions() {
-        let assertions = new Assertions();
-        this.request.hashTree.push(assertions);
-        this.reload();
+      initStepSize(array) {
+        stepCompute(array, this.request);
+        this.reloadBody();
       },
-      addExtract() {
-        let jsonPostProcessor = new Extract();
-        this.request.hashTree.push(jsonPostProcessor);
-        this.reload();
+      reloadBody() {
+        // 解决修改请求头后 body 显示错位
+        this.isBodyShow = false;
+        this.$nextTick(() => {
+          this.isBodyShow = true;
+        });
       },
       remove(row) {
         let index = this.request.hashTree.indexOf(row);
@@ -167,8 +215,7 @@
         this.reload();
       },
       copyRow(row) {
-        let obj = {};
-        Object.assign(obj, row);
+        let obj = JSON.parse(JSON.stringify(row));
         obj.id = getUUID();
         this.request.hashTree.push(obj);
         this.reload();
@@ -193,14 +240,30 @@
       runTest() {
 
       },
-
       getEnvironments() {
         this.environments = [];
-        this.$get('/api/environment/list/' + getCurrentProjectID(), response => {
+        let id = this.request.projectId ? this.request.projectId : this.projectId;
+        this.$get('/api/environment/list/' + id, response => {
           this.environments = response.data;
           this.environments.forEach(environment => {
             parseEnvironment(environment);
           });
+          if (!this.request.environmentId) {
+            this.request.environmentId = this.$store.state.useEnvironment;
+          }
+          let hasEnvironment = false;
+          for (let i in this.environments) {
+            if (this.environments[i].id === this.request.environmentId) {
+              hasEnvironment = true;
+              break;
+            }
+          }
+          if (!hasEnvironment) {
+            this.request.environmentId = undefined;
+          }
+          if (!this.request.environmentId) {
+            this.request.dataSourceId = undefined;
+          }
           this.initDataSource();
         });
       },
@@ -208,18 +271,36 @@
         this.$refs.environmentConfig.open(getCurrentProjectID());
       },
       initDataSource() {
+        let flag = false;
         for (let i in this.environments) {
           if (this.environments[i].id === this.request.environmentId) {
             this.databaseConfigsOptions = [];
             this.environments[i].config.databaseConfigs.forEach(item => {
+              if (item.id === this.request.dataSourceId) {
+                flag = true;
+              }
               this.databaseConfigsOptions.push(item);
-            })
+            });
+            break;
+          }
+        }
+        if (!flag) {
+          this.request.dataSourceId = "";
+        }
+      },
+      setDataSource() {
+        this.initDataSource();
+
+        for (let item of this.databaseConfigsOptions) {
+          if (this.request.dataSourceId === item.id) {
+            this.request.dataSource = item;
             break;
           }
         }
       },
       environmentChange(value) {
         this.request.dataSource = undefined;
+        this.request.dataSourceId = "";
         for (let i in this.environments) {
           if (this.environments[i].id === value) {
             this.databaseConfigsOptions = [];
@@ -255,19 +336,24 @@
     margin-top: 40px;
   }
 
+  .ms-header {
+    background: #783887;
+    color: white;
+    height: 18px;
+    font-size: xx-small;
+    border-radius: 50%;
+  }
+
+  .environment-button {
+    margin-left: 20px;
+    padding: 7px;
+  }
+
   .ms-left-buttion {
     margin: 6px 0px 8px 30px;
   }
 
   /deep/ .el-form-item {
     margin-bottom: 15px;
-  }
-
-  .tip {
-    padding: 3px 5px;
-    font-size: 16px;
-    border-radius: 4px;
-    border-left: 4px solid #783887;
-    margin: 0px 20px 0px;
   }
 </style>

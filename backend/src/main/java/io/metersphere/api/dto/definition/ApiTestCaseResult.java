@@ -11,5 +11,9 @@ public class ApiTestCaseResult extends ApiTestCaseWithBLOBs {
     private String createUser;
     private String updateUser;
     private String execResult;
+    private String passRate;
+    private String apiMethod;
+    private Long execTime;
     private boolean active = false;
+    private boolean responseActive = false;
 }

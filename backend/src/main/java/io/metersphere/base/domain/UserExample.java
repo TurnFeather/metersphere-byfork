@@ -714,76 +714,6 @@ public class UserExample {
             return (Criteria) this;
         }
 
-        public Criteria andLastOrganizationIdIsNull() {
-            addCriterion("last_organization_id is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdIsNotNull() {
-            addCriterion("last_organization_id is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdEqualTo(String value) {
-            addCriterion("last_organization_id =", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdNotEqualTo(String value) {
-            addCriterion("last_organization_id <>", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdGreaterThan(String value) {
-            addCriterion("last_organization_id >", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdGreaterThanOrEqualTo(String value) {
-            addCriterion("last_organization_id >=", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdLessThan(String value) {
-            addCriterion("last_organization_id <", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdLessThanOrEqualTo(String value) {
-            addCriterion("last_organization_id <=", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdLike(String value) {
-            addCriterion("last_organization_id like", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdNotLike(String value) {
-            addCriterion("last_organization_id not like", value, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdIn(List<String> values) {
-            addCriterion("last_organization_id in", values, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdNotIn(List<String> values) {
-            addCriterion("last_organization_id not in", values, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdBetween(String value1, String value2) {
-            addCriterion("last_organization_id between", value1, value2, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
-        public Criteria andLastOrganizationIdNotBetween(String value1, String value2) {
-            addCriterion("last_organization_id not between", value1, value2, "lastOrganizationId");
-            return (Criteria) this;
-        }
-
         public Criteria andPhoneIsNull() {
             addCriterion("phone is null");
             return (Criteria) this;
@@ -991,6 +921,76 @@ public class UserExample {
 
         public Criteria andLastProjectIdNotBetween(String value1, String value2) {
             addCriterion("last_project_id not between", value1, value2, "lastProjectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserIsNull() {
+            addCriterion("create_user is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserIsNotNull() {
+            addCriterion("create_user is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserEqualTo(String value) {
+            addCriterion("create_user =", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserNotEqualTo(String value) {
+            addCriterion("create_user <>", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserGreaterThan(String value) {
+            addCriterion("create_user >", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserGreaterThanOrEqualTo(String value) {
+            addCriterion("create_user >=", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserLessThan(String value) {
+            addCriterion("create_user <", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserLessThanOrEqualTo(String value) {
+            addCriterion("create_user <=", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserLike(String value) {
+            addCriterion("create_user like", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserNotLike(String value) {
+            addCriterion("create_user not like", value, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserIn(List<String> values) {
+            addCriterion("create_user in", values, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserNotIn(List<String> values) {
+            addCriterion("create_user not in", values, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserBetween(String value1, String value2) {
+            addCriterion("create_user between", value1, value2, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andCreateUserNotBetween(String value1, String value2) {
+            addCriterion("create_user not between", value1, value2, "createUser");
             return (Criteria) this;
         }
     }

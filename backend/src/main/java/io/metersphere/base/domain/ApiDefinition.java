@@ -16,8 +16,6 @@ public class ApiDefinition implements Serializable {
 
     private String modulePath;
 
-    private String description;
-
     private String environmentId;
 
     private String schedule;
@@ -35,6 +33,32 @@ public class ApiDefinition implements Serializable {
     private String protocol;
 
     private String path;
+
+    private Integer num;
+
+    private String tags;
+
+    private String originalState;
+
+    private String createUser;
+
+    private String caseTotal;
+
+    private String caseStatus;
+
+    private String casePassingRate;
+
+    private Long deleteTime;
+
+    private String deleteUserId;
+
+    private Long order;
+
+    private String refId;
+
+    private String versionId;
+
+    private Boolean latest;
 
     private static final long serialVersionUID = 1L;
 }

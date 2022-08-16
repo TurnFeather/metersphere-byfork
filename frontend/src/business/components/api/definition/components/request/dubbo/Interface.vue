@@ -1,11 +1,12 @@
 <template>
   <el-form :model="request" :rules="rules" ref="request" label-width="100px" size="small" v-loading="loading"
            :disabled="isReadOnly">
-    <el-button class="get-provider" type="primary" size="small" @click="getProviderList">Get Provider List</el-button>
+    <el-button class="get-provider" type="primary" size="mini" @click="getProviderList">Get Provider List</el-button>
     <el-row>
       <el-col :span="12">
         <el-form-item label="Interfaces" prop="interfaces">
-          <el-select v-model="serviceInterface" class="select-100" @change="changeInterface" :disabled="isDisable">
+          <el-select filterable v-model="serviceInterface" class="select-100" @change="changeInterface"
+                     :disabled="isDisable">
             <el-option v-for="i in interfaces" :key="i.value" :label="i.label" :value="i.value"/>
           </el-select>
         </el-form-item>
@@ -77,14 +78,16 @@
         this.request.method = value;
       },
       getProviderList() {
-        if (this.request.registryCenter === undefined || this.request.dubboConfig ===undefined) {
-          return;
+        let param = {};
+        if (this.request.registryCenter) {
+          param.protocol = this.request.registryCenter.protocol;
+          param.address = this.request.registryCenter.address;
+          param.group = this.request.registryCenter.group;
+        } else if (this.request.dubboConfig.registryCenter) {
+          param.protocol = this.request.dubboConfig.registryCenter.protocol;
+          param.address = this.request.dubboConfig.registryCenter.address;
+          param.group = this.request.dubboConfig.registryCenter.group;
         }
-        let param = {
-          protocol: this.request.registryCenter.protocol || this.request.dubboConfig.registryCenter.protocol,
-          address: this.request.registryCenter.address || this.request.dubboConfig.registryCenter.address,
-          group: this.request.registryCenter.group || this.request.dubboConfig.registryCenter.group,
-        };
 
         this.loading = true;
         this.$post("/api/dubbo/providers", param).then(response => {
@@ -115,7 +118,7 @@
 
 <style scoped>
   .get-provider {
-    margin-bottom: 22px;
+    margin: 5px 5px 10px;
   }
 
   .select-100 {

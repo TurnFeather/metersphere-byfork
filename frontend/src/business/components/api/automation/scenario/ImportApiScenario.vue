@@ -10,6 +10,7 @@
         @edit="editScenario"
         @selection="setData"
         :referenced="true"
+        :select-project-id="cuurentProjectId"
         ref="apiScenarioList"/>
 
       <el-button style="float: right;margin: 10px" @click="importApiScenario" type="primary">{{ $t('api_test.scenario.reference') }}</el-button>
@@ -40,6 +41,7 @@
         currentScenario: [],
         currentScenarioIds: [],
         moduleOptions: {},
+        cuurentProjectId: "",
         scenarioDefinition: Object,
       }
     },
@@ -68,7 +70,7 @@
           if (response.data) {
             response.data.forEach(item => {
               let scenarioDefinition = JSON.parse(item.scenarioDefinition);
-              let obj = {id: item.id, name: item.name, type: "scenario", referenced: 'Copy', resourceId: getUUID(), hashTree: scenarioDefinition};
+              let obj = {id: item.id, name: item.name, type: "scenario", referenced: 'Copy', resourceId: getUUID(), hashTree: scenarioDefinition && scenarioDefinition.hashTree ? scenarioDefinition.hashTree : []};
               scenarios.push(obj);
             })
             this.$emit('addScenario', scenarios);
@@ -84,6 +86,7 @@
         this.moduleOptions = data;
       },
       refresh(data) {
+        this.cuurentProjectId = data;
         this.$refs.apiScenarioList.search(data);
       },
       editScenario(row) {

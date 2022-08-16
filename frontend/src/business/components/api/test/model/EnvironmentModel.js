@@ -10,13 +10,27 @@ export class Environment extends BaseConfig {
     this.name = undefined;
     this.id = undefined;
     this.config = undefined;
-
     this.set(options);
     this.sets({}, options);
   }
 
   initOptions(options = {}) {
     this.config = new Config(options.config);
+    return options;
+  }
+}
+
+export class SSLConfig extends BaseConfig {
+  constructor(options = {}) {
+    super();
+    this.entrys = [];
+    this.files = [];
+    this.set(options);
+    this.sets({files: KeyValue}, options);
+    this.sets({entrys: KeyValue}, options);
+  }
+
+  initOptions(options = {}) {
     return options;
   }
 }
@@ -28,7 +42,7 @@ export class Config extends BaseConfig {
     this.httpConfig = undefined;
     this.databaseConfigs = [];
     this.tcpConfig = undefined;
-
+    this.sslConfig = {};
     this.set(options);
     this.sets({databaseConfigs: DatabaseConfig}, options);
   }
@@ -36,6 +50,7 @@ export class Config extends BaseConfig {
   initOptions(options = {}) {
     this.commonConfig = new CommonConfig(options.commonConfig);
     this.httpConfig = new HttpConfig(options.httpConfig);
+    this.sslConfig = new SSLConfig(options.sslConfig);
     options.databaseConfigs = options.databaseConfigs || [];
     options.tcpConfig = new TCPConfig(options.tcpConfig);
     return options;
@@ -63,15 +78,17 @@ export class CommonConfig extends BaseConfig {
 export class HttpConfig extends BaseConfig {
   constructor(options = {}) {
     super();
-
     this.socket = undefined;
     this.domain = undefined;
     this.headers = [];
     this.protocol = 'https';
     this.port = undefined;
-
+    this.conditions = [];
+    this.isMock = false;
+    this.description = "";
     this.set(options);
     this.sets({headers: KeyValue}, options);
+    this.sets({conditions: KeyValue}, options);
   }
 
   initOptions(options = {}) {
@@ -115,6 +132,7 @@ export function compatibleWithEnvironment(environment) {
     config.httpConfig.protocol = environment.protocol;
     config.httpConfig.domain = environment.domain;
     config.httpConfig.socket = environment.socket;
+    config.httpConfig.description = environment.description;
     environment.config = JSON.stringify(config);
   }
 }

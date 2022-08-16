@@ -1,11 +1,49 @@
-import router from './components/common/router/router'
+import router from './components/common/router/router';
 import {TokenKey} from '@/common/js/constants';
-import {hasLicense, hasRolePermissions, hasRoles} from "@/common/js/utils";
-import NProgress from 'nprogress' // progress bar
-import 'nprogress/nprogress.css' // progress bar style
+import {
+  enableModules,
+  hasLicense,
+  hasPermissions, removeLicense, saveLicense
+} from "@/common/js/utils";
+import NProgress from 'nprogress'; // progress bar
+import 'nprogress/nprogress.css';
+import {baseGet} from "@/network/base-network"; // progress bar style
 const whiteList = ['/login']; // no redirect whitelist
 
-NProgress.configure({showSpinner: false}) // NProgress Configuration
+NProgress.configure({showSpinner: false}); // NProgress Configuration
+
+function checkLicense(el, binding, type) {
+  let v = hasLicense();
+
+  if (!v) {
+    el.parentNode && el.parentNode.removeChild(el);
+  }
+}
+
+
+function checkRolePermission(el, binding, type) {
+  const {value} = binding;
+  if (value && value instanceof Array && value.length > 0) {
+    const permissionRoles = value;
+    let hasPermission = false;
+    if (type === 'permission') {
+      hasPermission = hasPermissions(...permissionRoles);
+    }
+    if (!hasPermission) {
+      el.parentNode && el.parentNode.removeChild(el);
+    }
+  }
+}
+
+function checkModule(el, binding) {
+  const {value} = binding;
+  if (value && value instanceof Array && value.length > 0) {
+    let v = enableModules(...value);
+    if (!v) {
+      el.parentNode && el.parentNode.removeChild(el);
+    }
+  }
+}
 
 export const permission = {
   inserted(el, binding) {
@@ -25,29 +63,12 @@ export const xpack = {
   }
 };
 
-function checkLicense(el, binding, type) {
-  let v = hasLicense()
 
-  if (!v) {
-    el.parentNode && el.parentNode.removeChild(el)
+export const modules = {
+  inserted(el, binding) {
+    checkModule(el, binding);
   }
-}
-
-function checkRolePermission(el, binding, type) {
-  const {value} = binding;
-  if (value && value instanceof Array && value.length > 0) {
-    const permissionRoles = value;
-    let hasPermission = false;
-    if (type === 'roles') {
-      hasPermission = hasRoles(...permissionRoles);
-    } else if (type === 'permission') {
-      hasPermission = hasRolePermissions(...permissionRoles);
-    }
-    if (!hasPermission) {
-      el.parentNode && el.parentNode.removeChild(el)
-    }
-  }
-}
+};
 
 router.beforeEach(async (to, from, next) => {
   // start progress bar
@@ -63,7 +84,7 @@ router.beforeEach(async (to, from, next) => {
     } else {
       // const roles = user.roles.filter(r => r.id);
       // TODO 设置路由的权限
-      next()
+      next();
     }
   } else {
     /* has no token*/
@@ -83,3 +104,18 @@ router.afterEach(() => {
   // finish progress bar
   NProgress.done();
 });
+
+export function getLicense(callback) {
+  return baseGet("/license/valid", data => {
+    validateAndSetLicense(data);
+    if (callback) callback();
+  });
+}
+
+export function validateAndSetLicense(data) {
+  if (data === null || data.status !== 'valid') {
+    removeLicense();
+  } else {
+    saveLicense(data.status);
+  }
+}

@@ -2,52 +2,43 @@
 
   <div>
 
-    <el-dialog :close-on-click-modal="false"
+    <el-dialog v-loading="result.loading"
+               :close-on-click-modal="false"
+               :destroy-on-close="true"
+               append-to-body
                :title="operationType === 'edit' ? $t('test_track.plan.edit_plan') : $t('test_track.plan.create_plan')"
                :visible.sync="dialogFormVisible"
                @close="close"
-               width="65%">
+               top="8vh"
+               width="60%">
 
-      <el-form :model="form" :rules="rules" ref="planFrom">
-
-        <el-row>
-          <el-col :span="8" :offset="1">
+      <el-form :model="form" :rules="rules" ref="planFrom" v-if="isStepTableAlive">
+        <el-row type="flex" :gutter="20">
+          <el-col :span="12">
             <el-form-item
-              :placeholder="$t('test_track.plan.input_name')"
               :label="$t('test_track.plan.plan_name')"
               :label-width="formLabelWidth"
               prop="name">
-              <el-input v-model="form.name"></el-input>
+              <el-input v-model="form.name" :placeholder="$t('test_track.plan.input_plan_name')" :size="itemSize"></el-input>
             </el-form-item>
           </el-col>
-
-          <el-col :span="11" :offset="2">
-            <el-form-item :label="$t('test_track.plan.plan_project')" :label-width="formLabelWidth" prop="projectIds">
-              <el-select
-                v-model="form.projectIds"
-                :placeholder="$t('test_track.plan.input_plan_project')"
-                multiple
-                style="width: 100%"
-                filterable>
-                <el-option
-                  v-for="item in projects"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id">
-                </el-option>
-              </el-select>
+          <el-col :span="12">
+            <el-form-item :label="$t('commons.tag')" :label-width="formLabelWidth" prop="tag">
+              <ms-input-tag :currentScenario="form" ref="tag" :size="itemSize"/>
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row>
-          <el-col :span="10" :offset="1">
-            <el-form-item :label="$t('test_track.plan.plan_principal')" :label-width="formLabelWidth" prop="principal">
-              <el-select v-model="form.principal" :placeholder="$t('test_track.plan.input_plan_principal')" filterable>
+        <el-row type="flex" :gutter="20">
+          <el-col :span="12">
+            <el-form-item :label="$t('test_track.plan.plan_principal')" :label-width="formLabelWidth" prop="principals">
+              <el-select v-model="form.principals" :placeholder="$t('test_track.plan.input_plan_principal')"
+                         style="width: 100%;"
+                         filterable multiple :size="itemSize">
                 <el-option
-                  v-for="item in principalOptions"
+                  v-for="(item) in principalOptions"
                   :key="item.id"
-                  :label="item.name"
+                  :label="item.name + '(' + item.id + ')'"
                   :value="item.id">
                 </el-option>
               </el-select>
@@ -56,41 +47,60 @@
 
           <el-col :span="12">
             <el-form-item :label="$t('test_track.plan.plan_stage')" :label-width="formLabelWidth" prop="stage">
-              <el-select v-model="form.stage" clearable :placeholder="$t('test_track.plan.input_plan_stage')">
-                <el-option :label="$t('test_track.plan.smoke_test')" value="smoke"></el-option>
-                <el-option :label="$t('test_track.plan.system_test')" value="system"></el-option>
-                <el-option :label="$t('test_track.plan.regression_test')" value="regression"></el-option>
+              <el-select v-model="form.stage" clearable :placeholder="$t('test_track.plan.input_plan_stage')" style="width: 100%;" :size="itemSize">
+                <el-option v-for="item in stageOption" :key="item.value" :label="$t(item.text)" :value="item.value"/>
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
 
         <!--start:xuxm增加自定义‘计划开始’，‘计划结束’时间字段-->
-        <el-row>
-          <el-col :span="8" :offset="1">
+        <el-row type="flex" :gutter="20">
+          <el-col :span="12">
             <el-form-item
               :label="$t('test_track.plan.planned_start_time')"
               :label-width="formLabelWidth"
               prop="plannedStartTime">
               <el-date-picker :placeholder="$t('test_track.plan.planned_start_time')" v-model="form.plannedStartTime"
-                              type="datetime" value-format="timestamp"></el-date-picker>
+                              type="datetime" value-format="timestamp" style="width: 100%;"></el-date-picker>
             </el-form-item>
           </el-col>
 
-          <el-col :span="11" :offset="2">
+          <el-col :span="12">
             <el-form-item
               :label="$t('test_track.plan.planned_end_time')"
               :label-width="formLabelWidth"
               prop="plannedEndTime">
               <el-date-picker :placeholder="$t('test_track.plan.planned_end_time')" v-model="form.plannedEndTime"
-                              type="datetime" value-format="timestamp"></el-date-picker>
+                              type="datetime" value-format="timestamp" style="width: 100%;"></el-date-picker>
             </el-form-item>
           </el-col>
         </el-row>
         <!--end:xuxm增加自定义‘计划开始’，‘计划结束’时间字段-->
 
-        <el-row type="flex" justify="left" style="margin-top: 10px;">
-          <el-col :span="23" :offset="1">
+        <el-row type="flex" :gutter="20">
+          <el-col :span="12">
+            <el-form-item
+              :label="$t('test_track.plan_view.automatically_update_status')"
+              label-width="140px"
+              prop="automaticStatusUpdate">
+              <el-switch v-model="form.automaticStatusUpdate"/>
+              <ms-instructions-icon :content="$t('test_track.plan_view.automatically_update_status_tip')"/>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item
+              :label="$t('test_track.plan_view.allow_associated_repetitive_cases')"
+              label-width="140px"
+              prop="automaticStatusUpdate">
+              <el-switch v-model="form.repeatCase"/>
+              <ms-instructions-icon :content="$t('test_track.plan_view.allow_associated_repetitive_cases_tip')"/>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row type="flex" justify="left" :gutter="20">
+          <el-col :span="24">
             <el-form-item :label="$t('commons.description')" :label-width="formLabelWidth" prop="description">
               <el-input v-model="form.description"
                         type="textarea"
@@ -101,8 +111,8 @@
           </el-col>
         </el-row>
 
-        <el-row v-if="operationType === 'edit'" type="flex" justify="left" style="margin-top: 10px;">
-          <el-col :span="19" :offset="1">
+        <el-row v-if="operationType === 'edit'" type="flex" justify="left" :gutter="20">
+          <el-col :span="12">
             <el-form-item :label="$t('test_track.plan.plan_status')" :label-width="formLabelWidth" prop="status">
               <test-plan-status-button :status="form.status" @statusChange="statusChange"/>
             </el-form-item>
@@ -112,15 +122,22 @@
       </el-form>
 
       <template v-slot:footer>
+
         <div class="dialog-footer">
           <el-button
+            v-prevent-re-click
             @click="dialogFormVisible = false">
             {{ $t('test_track.cancel') }}
           </el-button>
           <el-button
             type="primary"
+            v-prevent-re-click
             @click="savePlan">
             {{ $t('test_track.confirm') }}
+          </el-button>
+          <el-button type="primary" v-prevent-re-click
+                     @click="testPlanInfo">
+            {{ $t('test_track.planning_execution') }}
           </el-button>
         </div>
       </template>
@@ -133,47 +150,62 @@
 
 <script>
 
-import {WORKSPACE_ID} from '@/common/js/constants';
 import TestPlanStatusButton from "../common/TestPlanStatusButton";
-import {listenGoBack, removeGoBackListener} from "@/common/js/utils";
-import {LIST_CHANGE, TrackEvent} from "@/business/components/common/head/ListEvent";
+import {getCurrentProjectID, getCurrentWorkspaceId, listenGoBack, removeGoBackListener} from "@/common/js/utils";
+import MsInputTag from "@/business/components/api/automation/scenario/MsInputTag";
+import MsInstructionsIcon from "@/business/components/common/components/MsInstructionsIcon";
+import {getPlanStageOption} from "@/network/test-plan";
 
 export default {
   name: "TestPlanEdit",
-  components: {TestPlanStatusButton},
+  components: {MsInstructionsIcon, TestPlanStatusButton, MsInputTag},
   data() {
     return {
+      isStepTableAlive: true,
       dialogFormVisible: false,
+      itemSize: "medium",
+      result: {},
       form: {
         name: '',
         projectIds: [],
-        principal: '',
+        principals: [],
         stage: '',
         description: '',
         plannedStartTime: '',
-        plannedEndTime: ''
+        plannedEndTime: '',
+        automaticStatusUpdate: false,
+        repeatCase: false,
+        follows: []
       },
-      dbProjectIds: [],
       rules: {
         name: [
           {required: true, message: this.$t('test_track.plan.input_plan_name'), trigger: 'blur'},
           {max: 30, message: this.$t('test_track.length_less_than') + '30', trigger: 'blur'}
         ],
-        projectIds: [{required: true, message: this.$t('test_track.plan.input_plan_project'), trigger: 'change'}],
-        principal: [{required: true, message: this.$t('test_track.plan.input_plan_principal'), trigger: 'change'}],
+        principals: [{required: true, message: this.$t('test_track.plan.input_plan_principal'), trigger: 'change'}],
         stage: [{required: true, message: this.$t('test_track.plan.input_plan_stage'), trigger: 'change'}],
         description: [{max: 200, message: this.$t('test_track.length_less_than') + '200', trigger: 'blur'}]
       },
-      formLabelWidth: "120px",
+      formLabelWidth: "100px",
       operationType: '',
-      projects: [],
-      principalOptions: []
+      principalOptions: [],
+      stageOption: []
     };
   },
+  created() {
+    //设置“测试阶段”和“负责人”的默认值
+    this.form.stage = 'smoke';
+    getPlanStageOption((data) => {
+      this.stageOption = data;
+    });
+  },
   methods: {
+    reload() {
+      this.isStepTableAlive = false;
+      this.$nextTick(() => (this.isStepTableAlive = true));
+    },
     openTestPlanEditDialog(testPlan) {
       this.resetForm();
-      this.getProjects();
       this.setPrincipalOptions();
       this.operationType = 'add';
       if (testPlan) {
@@ -182,45 +214,61 @@ export default {
         let tmp = {};
         Object.assign(tmp, testPlan);
         Object.assign(this.form, tmp);
-        this.dbProjectIds = JSON.parse(JSON.stringify(this.form.projectIds));
+      } else {
+        this.form.tags = [];
       }
       listenGoBack(this.close);
       this.dialogFormVisible = true;
+      this.reload();
     },
-    savePlan() {
+    testPlanInfo() {
       this.$refs['planFrom'].validate((valid) => {
         if (valid) {
           let param = {};
           Object.assign(param, this.form);
           param.name = param.name.trim();
-          if (!this.validate(param)) {
+          if (param.name === '') {
+            this.$warning(this.$t('test_track.plan.input_plan_name'));
             return;
           }
-          param.workspaceId = localStorage.getItem(WORKSPACE_ID);
-
-          if (this.operationType === 'edit') {
-            const nowIds = param.projectIds;
-            let sign = true;
-            this.dbProjectIds.forEach(dbId => {
-              if (nowIds.indexOf(dbId) === -1 && sign) {
-                sign = false;
-                this.$confirm(this.$t('test_track.case.cancel_relevance_project'), this.$t('commons.prompt'), {
-                  confirmButtonText: this.$t('commons.confirm'),
-                  cancelButtonText: this.$t('commons.cancel'),
-                  type: 'warning'
-                }).then(() => {
-                  this.editTestPlan(param);
-                }).catch(() => {
-                  this.$info(this.$t('commons.cancel'))
-                });
-              }
-            });
-            if (sign) {
-              this.editTestPlan(param);
-            }
-          } else {
-            this.editTestPlan(param);
+          param.workspaceId = getCurrentWorkspaceId();
+          if (this.form.tags instanceof Array) {
+            this.form.tags = JSON.stringify(this.form.tags);
           }
+          param.tags = this.form.tags;
+          this.result = this.$post('/test/plan/' + this.operationType, param, response => {
+            if (this.operationType === 'add') {
+              this.$success(this.$t('commons.save_success'));
+            }
+            this.dialogFormVisible = false;
+            this.$router.push('/track/plan/view/' + response.data.id);
+          });
+        } else {
+          return false;
+        }
+      });
+    },
+    savePlan() {
+
+      this.$refs['planFrom'].validate((valid) => {
+        if (valid) {
+          let param = {};
+          Object.assign(param, this.form);
+          param.name = param.name.trim();
+          if (param.name === '') {
+            this.$warning(this.$t('test_track.plan.input_plan_name'));
+            return;
+          }
+          param.workspaceId = getCurrentWorkspaceId();
+          if (this.form.tags instanceof Array) {
+            this.form.tags = JSON.stringify(this.form.tags);
+          }
+          param.tags = this.form.tags;
+          this.$post('/test/plan/' + this.operationType, param, () => {
+            this.$success(this.$t('commons.save_success'));
+            this.dialogFormVisible = false;
+            this.$emit("refresh");
+          });
         } else {
           return false;
         }
@@ -237,27 +285,8 @@ export default {
       }
       return true;
     },
-    editTestPlan(param) {
-      this.$post('/test/plan/' + this.operationType, param, () => {
-        this.$success(this.$t('commons.save_success'));
-        this.dialogFormVisible = false;
-        this.$emit("refresh");
-        // 发送广播，刷新 head 上的最新列表
-        TrackEvent.$emit(LIST_CHANGE);
-      });
-    },
-    getProjects() {
-      this.$get("/project/listAll", (response) => {
-        if (response.success) {
-          this.projects = response.data;
-        } else {
-          this.$warning()(response.message);
-        }
-      });
-    },
     setPrincipalOptions() {
-      let workspaceId = localStorage.getItem(WORKSPACE_ID);
-      this.$post('/user/ws/member/tester/list', {workspaceId: workspaceId}, response => {
+      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()},response => {
         this.principalOptions = response.data;
       });
     },
@@ -276,8 +305,10 @@ export default {
           this.$refs['planFrom'].resetFields();
           this.form.name = '';
           this.form.projectIds = [];
-          this.form.principal = '';
-          this.form.stage = '';
+          this.form.principals = [];
+          this.form.follows = [];
+          this.form.automaticStatusUpdate = false;
+          this.form.stage = 'smoke';
           this.form.description = '';
           this.form.status = null;
           this.form.plannedStartTime = null;
@@ -291,5 +322,7 @@ export default {
 </script>
 
 <style scoped>
-
+.instructions-icon {
+  margin-left: 10px;
+}
 </style>

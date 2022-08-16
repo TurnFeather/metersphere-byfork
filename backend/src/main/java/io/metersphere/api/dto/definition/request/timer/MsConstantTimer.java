@@ -2,8 +2,9 @@ package io.metersphere.api.dto.definition.request.timer;
 
 import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.fastjson.annotation.JSONType;
-import io.metersphere.api.dto.definition.request.MsTestElement;
 import io.metersphere.api.dto.definition.request.ParameterConfig;
+import io.metersphere.plugin.core.MsParameter;
+import io.metersphere.plugin.core.MsTestElement;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.commons.collections.CollectionUtils;
@@ -19,13 +20,18 @@ import java.util.List;
 @JSONType(typeName = "ConstantTimer")
 public class MsConstantTimer extends MsTestElement {
     private String type = "ConstantTimer";
-    @JSONField(ordinal = 10)
+    private String clazzName = MsConstantTimer.class.getCanonicalName();
+
+    @JSONField(ordinal = 20)
     private String id;
-    @JSONField(ordinal = 11)
+    @JSONField(ordinal = 21)
     private String delay;
 
-    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, ParameterConfig config) {
-        if (!this.isEnable()) {
+    @Override
+    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, MsParameter msParameter) {
+        ParameterConfig config = (ParameterConfig) msParameter;
+        // 非导出操作，且不是启用状态则跳过执行
+        if (!config.isOperating() && !this.isEnable()) {
             return;
         }
         final HashTree groupTree = tree.add(constantTimer());
@@ -38,7 +44,7 @@ public class MsConstantTimer extends MsTestElement {
 
     private ConstantTimer constantTimer() {
         ConstantTimer constantTimer = new ConstantTimer();
-        constantTimer.setEnabled(true);
+        constantTimer.setEnabled(this.isEnable());
         constantTimer.setName(this.getDelay() + " ms");
         constantTimer.setProperty(TestElement.TEST_CLASS, ConstantTimer.class.getName());
         constantTimer.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("ConstantTimerGui"));

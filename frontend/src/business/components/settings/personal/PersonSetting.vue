@@ -4,7 +4,7 @@
       <template v-slot:header>
         <div>
           <el-row type="flex" just ify="space-between" align="middle">
-            <span class="title">{{$t('commons.personal_info')}}</span>
+            <span class="title">{{ $t('commons.personal_info') }}</span>
           </el-row>
         </div>
       </template>
@@ -22,17 +22,20 @@
         </el-table-column>
         <el-table-column :label="$t('commons.operating')">
           <template v-slot:default="scope">
-            <ms-table-operator-button :tip="$t('member.edit_information')" icon="el-icon-edit"
-                                      type="primary" @exec="edit(scope.row)"/>
-            <ms-table-operator-button :tip="$t('member.edit_password')" icon="el-icon-s-tools" v-if="!isLdapUser"
-                                      type="success" @exec="editPassword(scope.row)"/>
+            <div>
+              <ms-table-operator-button :tip="$t('member.edit_information')" icon="el-icon-edit"
+                                        type="primary" @exec="edit(scope.row)"/>
+              <ms-table-operator-button :tip="$t('member.edit_password')" icon="el-icon-s-tools" v-if="isLocalUser"
+                                        type="success" @exec="editPassword(scope.row)"/>
+            </div>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
     <!--Modify personal details-->
-    <el-dialog :close-on-click-modal="false" :title="$t('member.modify_personal_info')" :visible.sync="updateVisible" width="30%"
+    <el-dialog :close-on-click-modal="false" :title="$t('member.modify_personal_info')" :visible.sync="updateVisible"
+               width="40%"
                :destroy-on-close="true" @close="handleClose">
       <el-form :model="form" label-position="right" label-width="100px" size="small" :rules="rule"
                ref="updateUserForm">
@@ -43,12 +46,16 @@
           <el-input v-model="form.name" autocomplete="off"/>
         </el-form-item>
         <el-form-item :label="$t('commons.email')" prop="email">
-          <el-input v-model="form.email" autocomplete="off" :disabled="isLdapUser"/>
+          <el-input v-model="form.email" autocomplete="off" :disabled="!isLocalUser"/>
         </el-form-item>
         <el-form-item :label="$t('commons.phone')" prop="phone">
           <el-input v-model="form.phone" autocomplete="off"/>
         </el-form-item>
       </el-form>
+      <jira-user-info @auth="handleAuth" v-if="hasJira" :data="currentPlatformInfo"/>
+      <tapd-user-info @auth="handleAuth" v-if="hasTapd" :data="currentPlatformInfo"/>
+      <zentao-user-info @auth="handleAuth" v-if="hasZentao" :data="currentPlatformInfo"/>
+      <azure-devops-user-info @auth="handleAuth" v-if="hasAzure" :data="currentPlatformInfo"/>
       <template v-slot:footer>
         <ms-dialog-footer
           @cancel="updateVisible = false"
@@ -57,9 +64,10 @@
     </el-dialog>
 
     <!--Change personal password-->
-    <el-dialog :close-on-click-modal="false" :title="$t('member.edit_password')" :visible.sync="editPasswordVisible" width="35%"
+    <el-dialog :close-on-click-modal="false" :title="$t('member.edit_password')" :visible.sync="editPasswordVisible"
+               width="35%"
                :destroy-on-close="true" @close="handleClose" left>
-      <el-form :model="ruleForm" :rules="rules" ref="editPasswordForm" label-width="120px" class="demo-ruleForm">
+      <el-form :model="ruleForm" :rules="rules" ref="editPasswordForm" label-width="100px" class="demo-ruleForm">
         <el-form-item :label="$t('member.old_password')" prop="password" style="margin-bottom: 29px">
           <el-input v-model="ruleForm.password" autocomplete="off" show-password/>
         </el-form-item>
@@ -77,163 +85,227 @@
         </span>
     </el-dialog>
 
-
   </div>
 </template>
 
 <script>
-  import {TokenKey} from "../../../../common/js/constants";
-  import MsDialogFooter from "../../common/components/MsDialogFooter";
-  import {getCurrentUser, listenGoBack, removeGoBackListener} from "../../../../common/js/utils";
-  import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
-  import {PHONE_REGEX} from "@/common/js/regex";
+import {TokenKey} from "@/common/js/constants";
+import MsDialogFooter from "../../common/components/MsDialogFooter";
+import {getCurrentUser, getCurrentWorkspaceId, listenGoBack, removeGoBackListener} from "@/common/js/utils";
+import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
+import {EMAIL_REGEX, PHONE_REGEX} from "@/common/js/regex";
+import JiraUserInfo from "@/business/components/settings/personal/JiraUserInfo";
+import TapdUserInfo from "@/business/components/settings/personal/TapdUserInfo";
+import {getIntegrationService} from "@/network/organization";
+import ZentaoUserInfo from "@/business/components/settings/personal/ZentaoUserInfo";
+import AzureDevopsUserInfo from "@/business/components/settings/personal/AzureDevopsUserInfo";
+import {logout} from "@/network/user";
 
-  export default {
-    name: "MsPersonSetting",
-    components: {MsDialogFooter, MsTableOperatorButton},
-    data() {
-      return {
-        result: {},
-        isLdapUser: false,
-        updateVisible: false,
-        editPasswordVisible: false,
-        tableData: [],
-        updatePath: '/user/update/current',
-        updatePasswordPath: '/user/update/password',
-        form: {},
-        ruleForm: {},
-        rule: {
-          name: [
-            {required: true, message: this.$t('member.input_name'), trigger: 'blur'},
-            {min: 2, max: 20, message: this.$t('commons.input_limit', [2, 20]), trigger: 'blur'},
-            {
-              required: true,
-              pattern: /^[\u4e00-\u9fa5_a-zA-Z0-9.·-]+$/,
-              message: this.$t('member.special_characters_are_not_supported'),
-              trigger: 'blur'
-            }
-          ],
-          phone: [
-            {
-              required: false,
-              pattern: PHONE_REGEX,
-              message: this.$t('member.mobile_number_format_is_incorrect'),
-              trigger: 'blur'
-            }
-          ],
-          email: [
-            {required: true, message: this.$t('member.input_email'), trigger: 'blur'},
-            {
-              required: true,
-              pattern: /^([A-Za-z0-9_\-.])+@([A-Za-z0-9]+\.)+[A-Za-z]{2,6}$/,
-              message: this.$t('member.email_format_is_incorrect'),
-              trigger: 'blur'
-            }
-          ],
-        },
-        rules:{
-          password: [
-            {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
-          ],
-          newpassword: [
-            {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
-            {
-              required: true,
-              pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^]{8,30}$/,
-              message: this.$t('member.password_format_is_incorrect'),
-              trigger: 'blur'
-            },
-          ],
-          repeatPassword: [
-            {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
-            {
-              required: true,
-              pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^]{8,30}$/,
-              message: this.$t('member.password_format_is_incorrect'),
-              trigger: 'blur'
-            },
-          ]
+export default {
+  name: "MsPersonSetting",
+  components: {ZentaoUserInfo, TapdUserInfo, JiraUserInfo, AzureDevopsUserInfo, MsDialogFooter, MsTableOperatorButton},
+  inject: [
+    'reload'
+  ],
+  data() {
+    return {
+      result: {},
+      isLocalUser: false,
+      updateVisible: false,
+      editPasswordVisible: false,
+      tableData: [],
+      updatePath: '/user/update/current',
+      updatePasswordPath: '/user/update/password',
+      form: {platformInfo: {}},
+      currentPlatformInfo: {
+        jiraAccount: '',
+        jiraPassword: '',
+        tapdUserName: '',
+        zentaoUserName: '',
+        zentaoPassword: '',
+        azureDevopsPat: ''
+      },
+      ruleForm: {},
+      hasJira: false,
+      hasTapd: false,
+      hasZentao: false,
+      hasAzure: false,
+      rule: {
+        name: [
+          {required: true, message: this.$t('member.input_name'), trigger: 'blur'},
+          {min: 2, max: 20, message: this.$t('commons.input_limit', [2, 20]), trigger: 'blur'},
+          {
+            required: true,
+            pattern: /^[\u4e00-\u9fa5_a-zA-Z0-9.·-]+$/,
+            message: this.$t('member.special_characters_are_not_supported'),
+            trigger: 'blur'
+          }
+        ],
+        phone: [
+          {
+            pattern: PHONE_REGEX,
+            message: this.$t('member.mobile_number_format_is_incorrect'),
+            trigger: 'blur'
+          }
+        ],
+        email: [
+          {required: true, message: this.$t('member.input_email'), trigger: 'blur'},
+          {
+            required: true,
+            pattern: EMAIL_REGEX,
+            message: this.$t('member.email_format_is_incorrect'),
+            trigger: 'blur'
+          }
+        ],
+      },
+      rules: {
+        password: [
+          {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
+        ],
+        newpassword: [
+          {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
+          {
+            required: true,
+            pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^]{8,30}$/,
+            message: this.$t('member.password_format_is_incorrect'),
+            trigger: 'blur'
+          },
+        ],
+        repeatPassword: [
+          {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
+          {
+            required: true,
+            pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^]{8,30}$/,
+            message: this.$t('member.password_format_is_incorrect'),
+            trigger: 'blur'
+          },
+        ]
+      }
+    };
+  },
+
+  activated() {
+    this.initTableData();
+  },
+  methods: {
+    currentUser: () => {
+      return getCurrentUser();
+    },
+    edit: function (row) {
+      this.updateVisible = true;
+      this.form = Object.assign({}, row);
+      this.getPlatformInfo(row);
+      listenGoBack(this.handleClose);
+    },
+    getPlatformInfo(row) {
+      if (row.platformInfo) {
+        this.form.platformInfo = JSON.parse(row.platformInfo);
+      } else {
+        this.form.platformInfo = {};
+      }
+      let orgId = getCurrentWorkspaceId();
+      if (!this.form.platformInfo[orgId]) {
+        this.form.platformInfo[orgId] = {};
+      }
+      this.currentPlatformInfo = this.form.platformInfo[orgId];
+      this.result = getIntegrationService((data) => {
+        let platforms = data.map(d => d.platform);
+        if (platforms.indexOf("Tapd") !== -1) {
+          this.hasTapd = true;
         }
+        if (platforms.indexOf("Jira") !== -1) {
+          this.hasJira = true;
+        }
+        if (platforms.indexOf("Zentao") !== -1) {
+          this.hasZentao = true;
+        }
+        if (platforms.indexOf("AzureDevops") !== -1) {
+          this.hasAzure = true;
+        }
+      });
+    },
+    editPassword(row) {
+      this.editPasswordVisible = true;
+      listenGoBack(this.handleClose);
+    },
+    cancel() {
+      this.editPasswordVisible = false;
+      this.ruleForm.password = "";
+      this.ruleForm.newpassword = "";
+    },
+    closeDialog() {
+      this.editPasswordVisible = false;
+      this.ruleForm.password = "";
+      this.ruleForm.newpassword = "";
+    },
+    updateUser(updateUserForm) {
+      this.$refs[updateUserForm].validate(valid => {
+        if (valid) {
+          let param = {};
+          Object.assign(param, this.form);
+          param.platformInfo = JSON.stringify(this.form.platformInfo);
+          this.result = this.$post(this.updatePath, param, response => {
+            this.$success(this.$t('commons.modify_success'));
+            localStorage.setItem(TokenKey, JSON.stringify(response.data));
+            this.updateVisible = false;
+            this.initTableData();
+            this.reload();
+          });
+        } else {
+          return false;
+        }
+      });
+    },
+    updatePassword(editPasswordForm) {
+      this.$refs[editPasswordForm].validate(valid => {
+        if (valid) {
+          if (this.ruleForm.newpassword !== this.ruleForm.repeatPassword) {
+            this.$warning(this.$t('member.inconsistent_passwords'));
+            return;
+          }
+          this.result = this.$post(this.updatePasswordPath, this.ruleForm, response => {
+            this.$success(this.$t('commons.modify_success'));
+            logout();
+          });
+        } else {
+          return false;
+        }
+      });
+    },
+    initTableData() {
+      this.result = this.$get("/user/info/" + encodeURIComponent(this.currentUser().id), response => {
+        let data = response.data;
+        this.isLocalUser = response.data.source === 'LOCAL';
+        let dataList = [];
+        dataList[0] = data;
+        this.tableData = dataList;
+        this.handleRouteOpen();
+      });
+    },
+    handleRouteOpen() {
+      let params = this.$route.params;
+      if (params.open) {
+        this.edit(this.tableData[0]);
+        params.open = false;
       }
     },
-
-    activated() {
-      this.initTableData();
+    handleAuth(type) {
+      let param = {...this.currentPlatformInfo};
+      param.workspaceId = getCurrentWorkspaceId();
+      param.platform = type;
+      this.$parent.result = this.$post("issues/user/auth", param, () => {
+        this.$success(this.$t('organization.integration.verified'));
+      });
     },
-    methods: {
-      currentUser: () => {
-        return getCurrentUser();
-      },
-      edit(row) {
-        this.updateVisible = true;
-        this.form = Object.assign({}, row);
-        listenGoBack(this.handleClose);
-      },
-      editPassword(row) {
-        this.editPasswordVisible = true;
-        listenGoBack(this.handleClose);
-      },
-      cancel(){
-        this.editPasswordVisible = false;
-        this.ruleForm.password="";
-        this.ruleForm.newpassword="";
-      },
-      closeDialog(){
-        this.editPasswordVisible = false;
-        this.ruleForm.password="";
-        this.ruleForm.newpassword="";
-      },
-      updateUser(updateUserForm) {
-        this.$refs[updateUserForm].validate(valid => {
-          if (valid) {
-            this.result = this.$post(this.updatePath, this.form, response => {
-              this.$success(this.$t('commons.modify_success'));
-              localStorage.setItem(TokenKey, JSON.stringify(response.data));
-              this.updateVisible = false;
-              this.initTableData();
-              window.location.reload();
-            });
-          } else {
-            return false;
-          }
-        })
-      },
-      updatePassword(editPasswordForm) {
-        this.$refs[editPasswordForm].validate(valid => {
-          if (valid) {
-            if (this.ruleForm.newpassword !== this.ruleForm.repeatPassword) {
-              this.$warning(this.$t('member.inconsistent_passwords'));
-              return;
-            }
-            this.result = this.$post(this.updatePasswordPath, this.ruleForm, response => {
-              this.$success(this.$t('commons.modify_success'));
-              this.editPasswordVisible = false;
-              this.initTableData();
-              window.location.reload();
-            });
-          } else {
-            return false;
-          }
-        })
-      },
-      initTableData() {
-        this.result = this.$get("/user/info/" + encodeURIComponent(this.currentUser().id), response => {
-          let data = response.data;
-          this.isLdapUser = response.data.source === 'LDAP' ? true : false;
-          let dataList = [];
-          dataList[0] = data;
-          this.tableData = dataList;
-        })
-      },
-      handleClose() {
-        this.form = {};
-        this.ruleForm = {};
-        removeGoBackListener(this.handleClose);
-        this.editPasswordVisible = false;
-        this.updateVisible = false;
-      }
+    handleClose() {
+      this.form = {};
+      this.ruleForm = {};
+      removeGoBackListener(this.handleClose);
+      this.editPasswordVisible = false;
+      this.updateVisible = false;
     }
   }
+};
 </script>
 
 <style scoped>

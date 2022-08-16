@@ -4,15 +4,30 @@
       :data="tableData"
       stripe
       border
+      height="calc(100vh - 235px)"
       style="width: 100%"
-      show-summary
-      :summary-method="getSummaries"
     >
-      <el-table-column label="Requests" fixed width="450" align="center">
+      <el-table-column label="Requests" min-width="150" align="center">
         <el-table-column
           prop="label"
           label="Label"
-          width="450"/>
+          sortable
+          min-width="150">
+          <template v-slot:header="{column}">
+            <span>Label</span>
+            <i class="el-icon-search" style="margin-left: 8px;cursor: pointer;font-weight: bold;"
+               @click="click(column)"></i>
+            <el-input v-model="searchLabel"
+                      placeholder="请输入 Label 搜索"
+                      size="mini"
+                      class="search_input"
+                      style="width: 100px; margin-left: 5px"
+                      v-if="column.showSearch"
+                      clearable
+                      @clear="filterLabel"
+                      @keyup.enter.native="filterLabel"/>
+          </template>
+        </el-table-column>
       </el-table-column>
 
       <el-table-column label="Executions" align="center">
@@ -24,14 +39,17 @@
         />
 
         <el-table-column
-          prop="ko"
-          label="KO"
+          prop="fail"
+          label="FAIL"
+          sortable
           align="center"
+          min-width="60"
         />
 
         <el-table-column
           prop="error"
           label="Error%"
+          sortable
           align="center"
         />
       </el-table-column>
@@ -39,50 +57,71 @@
       <el-table-column label="Response Times(ms)" align="center">
         <el-table-column
           prop="average"
-          label="Average"
+          label="Avg"
+          sortable
+          min-width="60"
         />
         <el-table-column
           prop="min"
           label="Min"
+          sortable
+          min-width="60"
         />
         <el-table-column
           prop="max"
           label="Max"
+          sortable
+          min-width="60"
+        />
+        <el-table-column
+          prop="median"
+          label="Med"
+          sortable
+          min-width="60"
         />
         <el-table-column
           prop="tp90"
-          label="90% line"
+          label="90%"
+          sortable
+          min-width="60"
         />
         <el-table-column
           prop="tp95"
-          label="95% line"
+          label="95%"
+          sortable
+          min-width="60"
         />
         <el-table-column
           prop="tp99"
-          label="99% line"
+          label="99%"
+          sortable
+          min-width="60"
         />
       </el-table-column>
 
       <el-table-column label="Throughput">
         <el-table-column
           prop="transactions"
-          label="Transactions/s"
-          width="150"
+          label="Trans/s"
+          sortable
+          width="100"
         />
       </el-table-column>
 
       <el-table-column label="NetWork(KB/sec)" align="center">
         <el-table-column
           prop="received"
-          label="Received"
+          label="Recd"
+          sortable
           align="center"
-          width="150"
+          width="100"
         />
         <el-table-column
           prop="sent"
           label="Sent"
+          sortable
           align="center"
-          width="150"
+          width="100"
         />
       </el-table-column>
 
@@ -91,95 +130,89 @@
 </template>
 
 <script>
-  export default {
-    name: "RequestStatistics",
-    data() {
-      return {
-        tableData: [],
-        id: ''
-      }
-    },
-    methods: {
-      initTableData() {
-        this.$get("/performance/report/content/" + this.id).then(res => {
+import {
+  getPerformanceReportContent,getSharePerformanceReportContent,
+} from "@/network/load-test";
+
+export default {
+  name: "RequestStatistics",
+  data() {
+    return {
+      tableData: [],
+      originalData: [],
+      id: '',
+      searchLabel: '',
+      showSearch: false,
+      showBtn: true,
+    }
+  },
+  props: ['report', 'isShare', 'shareId', 'planReportTemplate'],
+  methods: {
+    initTableData() {
+      if (this.planReportTemplate) {
+        let data = this.planReportTemplate.reportStatistics;
+        this.tableData = data;
+        this.originalData = data;
+      } else if (this.isShare){
+        getSharePerformanceReportContent(this.shareId, this.id).then(res => {
           this.tableData = res.data.data;
+          this.originalData = res.data.data;
         }).catch(() => {
           this.tableData = [];
         })
+      } else {
+        getPerformanceReportContent(this.id).then(res => {
+          this.tableData = res.data.data;
+          this.originalData = res.data.data;
+        }).catch(() => {
+          this.tableData = [];
+        })
+      }
+    },
+    click(column) {
+      this.searchLabel = '';
+      this.tableData = this.originalData;
+      this.$set(column, 'showSearch', !column.showSearch);
+    },
+    filterLabel() {
+      this.tableData = this.searchLabel ? this.originalData.filter(this.createFilter(this.searchLabel)) : this.originalData;
+    },
+    createFilter(queryString) {
+      return item => {
+        return (item.label.toLowerCase().indexOf(queryString.toLowerCase()) !== -1);
+      };
+    },
+  },
+  watch: {
+    report: {
+      handler(val) {
+        if (!val.status || !val.id) {
+          return;
+        }
+        let status = val.status;
+        this.id = val.id;
+        if (status === "Completed" || status === "Running") {
+          this.initTableData();
+        } else {
+          this.tableData = [];
+        }
       },
-      getSummaries(param) {
-        const {data} = param;
-        const sums = [];
-        let allSamples = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.samples);
-        }, 0);
-        let failSize = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.ko);
-        }, 0);
-        let averageTimeTotal = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.average) * parseFloat(currentValue.samples);
-        }, 0);
-        let tp90Total = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.tp90) * parseFloat(currentValue.samples);
-        }, 0);
-        let tp95Total = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.tp95) * parseFloat(currentValue.samples);
-        }, 0);
-        let tp99Total = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.tp99) * parseFloat(currentValue.samples);
-        }, 0);
-        let transactions = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.transactions);
-        }, 0);
-        transactions = transactions.toFixed(2);
-        let received = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.received);
-        }, 0);
-        received = received.toFixed(2);
-        let sent = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.sent);
-        }, 0);
-        sent = sent.toFixed(2);
-
-        let error = (Math.round(failSize / allSamples * 10000) / 100) + '%';
-        let averageTime = (averageTimeTotal / allSamples).toFixed(2);
-        let tp90 = (tp90Total / allSamples).toFixed(2);
-        let tp95 = (tp95Total / allSamples).toFixed(2);
-        let tp99 = (tp99Total / allSamples).toFixed(2);
-        let min = Math.min.apply(Math, data.map(function (o) {
-          return parseFloat(o.min)
-        }));
-        let max = Math.max.apply(Math, data.map(function (o) {
-          return parseFloat(o.max)
-        }));
-
-        sums.push('Total', allSamples, failSize, error, averageTime, min, max, tp90, tp95, tp99, transactions, received, sent);
-
-        return sums;
-
-      }
+      deep: true
     },
-    watch: {
-      report: {
-        handler(val){
-          if (!val.status || !val.id) {
-            return;
-          }
-          let status = val.status;
-          this.id = val.id;
-          if (status === "Completed" || status === "Running") {
-            this.initTableData();
-          } else {
-            this.tableData = [];
-          }
-        },
-        deep:true
-      }
-    },
-    props: ['report']
+    planReportTemplate: {
+      handler() {
+        if (this.planReportTemplate) {
+          this.initTableData();
+        }
+      },
+      deep: true
+    }
   }
+}
 </script>
 
 <style scoped>
-
+.search_input >>> .el-input__inner {
+  border-radius: 50px;
+}
 </style>

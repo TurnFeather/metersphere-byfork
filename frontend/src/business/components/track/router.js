@@ -6,6 +6,9 @@ const TestPlan = () => import('@/business/components/track/plan/TestPlan')
 const TestCaseReview = () => import('@/business/components/track/review/TestCaseReview')
 const TestCaseReviewView = () => import('@/business/components/track/review/view/TestCaseReviewView')
 const TestPlanView = () => import('@/business/components/track/plan/view/TestPlanView')
+const reportListView = () => import('@/business/components/track/report/TestPlanReport')
+const issueList = () => import('@/business/components/track/issue/IssueList.vue')
+// const reportListView = () => import('@/business/components/track/plan/TestPlan')
 
 export default {
   path: "/track",
@@ -34,6 +37,16 @@ export default {
       path: 'case/edit/:caseId',
       name: 'testCaseEdit',
       component: TestCase,
+    },
+    {
+      path: 'testPlan/reportList',
+      name: 'testPlanReportList',
+      component: reportListView,
+    },
+    {
+      path: 'issue',
+      name: 'issueManagement',
+      component: issueList,
     },
     {
       path: "plan/:type",

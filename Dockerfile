@@ -1,20 +1,20 @@
 FROM metersphere/fabric8-java-alpine-openjdk8-jre
 
-MAINTAINER FIT2CLOUD <support@fit2cloud.com>
+LABEL maintainer="FIT2CLOUD <support@fit2cloud.com>"
 
 ARG MS_VERSION=dev
+ARG DEPENDENCY=backend/target/dependency
 
-RUN mkdir -p /opt/apps && mkdir -p /opt/jmeter/lib/junit
+COPY ${DEPENDENCY}/BOOT-INF/lib /opt/lib
+COPY ${DEPENDENCY}/META-INF /opt/META-INF
+COPY ${DEPENDENCY}/BOOT-INF/classes /opt
 
-COPY backend/target/backend-1.5.jar /opt/apps
-
-COPY backend/target/classes/jmeter/ /opt/jmeter/
-
-ENV JAVA_APP_JAR=/opt/apps/backend-1.5.jar
-
+ENV JAVA_CLASSPATH=/opt:/opt/lib/ms-jmeter-core.jar:/opt/lib/*
+ENV JAVA_MAIN_CLASS=io.metersphere.Application
 ENV AB_OFF=true
-
 ENV MS_VERSION=${MS_VERSION}
-
 ENV JAVA_OPTIONS="-Dfile.encoding=utf-8 -Djava.awt.headless=true"
+
+RUN mv /opt/lib/ms-jmeter-core*.jar /opt/lib/ms-jmeter-core.jar
+
 CMD ["/deployments/run-java.sh"]

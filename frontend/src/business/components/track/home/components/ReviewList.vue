@@ -1,14 +1,14 @@
 <template>
-  <home-base-component :title="$t('test_track.review.my_review')" v-loading>
-    <template slot="header-area">
-      <div style="float: right">
-        <ms-table-button :is-tester-permission="true" v-if="!showMyCreator" icon="el-icon-view"
-                         :content="$t('test_track.review.my_create')" @click="searchMyCreator"/>
-        <ms-table-button :is-tester-permission="true" v-if="showMyCreator" icon="el-icon-view"
-                         :content="$t('test_track.review.reviewed_by_me')" @click="searchMyCreator"/>
-      </div>
-
-    </template>
+  <el-card class="table-card" v-loading="result.loading" body-style="padding:10px;">
+    <div slot="header">
+      <span class="title">
+        {{ $t('test_track.home.case_review') }}
+      </span>
+      <ms-table-button v-if="!showMyCreator" icon="el-icon-view"
+                       :content="$t('test_track.review.my_create')" @click="searchMyCreator" style="float: right"/>
+      <ms-table-button v-if="showMyCreator" icon="el-icon-view"
+                       :content="$t('test_track.review.reviewed_by_me')" @click="searchMyCreator" style="float: right"/>
+    </div>
     <el-table
       class="adjust-table"
       border
@@ -52,15 +52,15 @@
         </template>
       </el-table-column>
 
-      <el-table-column
-        prop="projectName"
-        :label="$t('test_track.plan.plan_project')"
-        show-overflow-tooltip>
-      </el-table-column>
+<!--      <el-table-column-->
+<!--        prop="projectName"-->
+<!--        :label="$t('test_track.plan.plan_project')"-->
+<!--        show-overflow-tooltip>-->
+<!--      </el-table-column>-->
 
     </el-table>
 
-  </home-base-component>
+  </el-card>
 </template>
 
 <script>
@@ -69,6 +69,7 @@ import PlanStageTableItem from "../../common/tableItems/plan/PlanStageTableItem"
 import PlanStatusTableItem from "../../common/tableItems/plan/PlanStatusTableItem";
 import HomeBaseComponent from "./HomeBaseComponent";
 import MsTableButton from "../../../common/components/MsTableButton";
+import {getCurrentProjectID, getCurrentWorkspaceId} from "../../../../../common/js/utils";
 
 export default {
   name: "ReviewList",
@@ -93,16 +94,14 @@ export default {
       if (!type) {
         type = 'reviewer'
       }
-      this.result = this.$get('/test/case/review/list/all/relate/' + type, response => {
+      let projectId = getCurrentProjectID();
+      let workspaceId = getCurrentWorkspaceId();
+      if (!projectId) {
+        return;
+      }
+      let param = {type, projectId, workspaceId};
+      this.result = this.$post('/test/case/review/list/all/relate', param , response => {
         this.tableData = response.data;
-        for (let i = 0; i < this.tableData.length; i++) {
-          let path = "/test/case/review/project";
-          this.$post(path, {id: this.tableData[i].id}, res => {
-            let arr = res.data;
-            let projectName = arr.map(data => data.name).join("、");
-            this.$set(this.tableData[i], "projectName", projectName);
-          });
-        }
       });
     },
     intoPlan(row) {
@@ -124,5 +123,7 @@ export default {
 </script>
 
 <style scoped>
-
+.el-card /deep/ .el-card__header {
+  border-bottom: 0px solid #EBEEF5;
+}
 </style>

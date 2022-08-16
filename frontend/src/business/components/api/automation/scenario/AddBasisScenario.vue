@@ -1,8 +1,8 @@
 <template>
-  <el-dialog :close-on-click-modal="false" :title="$t('api_test.definition.request.title')" :visible.sync="visible"
+  <el-dialog :close-on-click-modal="false" :title="$t('api_test.automation.add_scenario')" :visible.sync="visible"
              width="45%"
              :destroy-on-close="true">
-    <el-form :model="scenarioForm" label-position="right" label-width="80px" size="small" :rules="rule"
+    <el-form :model="scenarioForm" label-position="right" label-width="100px" size="small" :rules="rule"
              ref="scenarioForm">
       <el-form-item :label="$t('commons.name')" prop="name">
         <el-input v-model="scenarioForm.name" autocomplete="off" :placeholder="$t('commons.name')"/>
@@ -22,7 +22,8 @@
       </el-form-item>
 
       <el-form-item :label="$t('api_test.automation.scenario.follow_people')" prop="followPeople">
-        <el-select v-model="scenarioForm.followPeople"
+        <el-select v-model="scenarioForm.follows"
+                   multiple
                    :placeholder="$t('api_test.automation.scenario.follow_people')" filterable size="small"
                    style="width: 100%">
           <el-option
@@ -46,7 +47,7 @@
       <ms-dialog-footer
         @cancel="visible = false"
         :isShow="true"
-        title="编辑详情"
+        :title="$t('commons.edit_info')"
         @saveAsEdit="saveScenario(true)"
         @confirm="saveScenario">
       </ms-dialog-footer>
@@ -57,74 +58,85 @@
 </template>
 
 <script>
-import {WORKSPACE_ID} from '@/common/js/constants';
-import {getCurrentUser, getUUID,getCurrentProjectID} from "@/common/js/utils";
-import MsDialogFooter from "@/business/components/common/components/MsDialogFooter";
-export default {
-  name: "MsAddBasisScenario",
-  components: {MsDialogFooter},
-  props: {},
-  data() {
-    return {
-      scenarioForm: {},
-      visible: false,
-      currentModule: {},
-      userOptions: [],
-      rule: {
-        name: [
-          {required: true, message: this.$t('test_track.case.input_name'), trigger: 'blur'},
-          {max: 50, message: this.$t('test_track.length_less_than') + '50', trigger: 'blur'}
-        ],
-        principal: [{
-          required: true,
-          message: this.$t('api_test.automation.scenario.select_principal'),
-          trigger: 'change'
-        }],
-      },
-    }
-  }
-  ,
-  methods: {
-    saveScenario(saveAs) {
-      this.$refs['scenarioForm'].validate((valid) => {
-        if (valid) {
-          let path = "/api/automation/create";
-          this.setParameter();
-          this.result = this.$post(path, this.scenarioForm, () => {
-            this.visible = false;
-            if (saveAs) {
-              this.scenarioForm.request = JSON.stringify(this.scenarioForm.request);
-              this.$parent.saveAsEdit(this.scenarioForm);
-            } else {
-              this.$parent.refresh(this.currentModule);
-            }
-          });
-        } else {
-          return false;
-        }
-      })
-    },
-    setParameter() {
-      this.scenarioForm.projectId = getCurrentProjectID();
-      this.scenarioForm.id = getUUID().substring(0, 8);
-      this.scenarioForm.protocol = this.currentProtocol;
-      if (this.currentModule != null) {
-        this.scenarioForm.modulePath = this.currentModule.method !== undefined ? this.currentModule.method : null;
-        this.scenarioForm.apiScenarioModuleId = this.currentModule.id;
+  import {WORKSPACE_ID} from '@/common/js/constants';
+  import {getCurrentProjectID, getCurrentUser, getUUID} from "@/common/js/utils";
+  import MsDialogFooter from "@/business/components/common/components/MsDialogFooter";
+  import {saveScenario} from "@/business/components/api/automation/api-automation";
+
+  export default {
+    name: "MsAddBasisScenario",
+    components: {MsDialogFooter},
+    props: {},
+    data() {
+      return {
+        scenarioForm: {follows:[]},
+        visible: false,
+        currentModule: {},
+        userOptions: [],
+        rule: {
+          name: [
+            {required: true, message: this.$t('test_track.case.input_name'), trigger: 'blur'},
+            {max: 100, message: this.$t('test_track.length_less_than') + '100', trigger: 'blur'}
+          ],
+          principal: [{
+            required: true,
+            message: this.$t('api_test.automation.scenario.select_principal'),
+            trigger: 'change'
+          }],
+        },
       }
     },
-    getMaintainerOptions() {
-      let workspaceId = localStorage.getItem(WORKSPACE_ID);
-      this.$post('/user/ws/member/tester/list', {workspaceId: workspaceId}, response => {
-        this.userOptions = response.data;
-      });
+    computed: {
+      projectId() {
+        return getCurrentProjectID();
+      },
     },
-    open(currentModule) {
-      this.scenarioForm = {principal: getCurrentUser().id};
-      this.currentModule = currentModule;
-      this.getMaintainerOptions();
-      this.visible = true;
+    methods: {
+      saveScenario(saveAs) {
+        this.$refs['scenarioForm'].validate((valid) => {
+          if (valid) {
+            let path = "/api/automation/create";
+            this.setParameter();
+            if (saveAs) {
+              this.scenarioForm.request = JSON.stringify(this.scenarioForm.request);
+              this.$emit('saveAsEdit', this.scenarioForm);
+              this.visible = false;
+            } else {
+              saveScenario(path, this.scenarioForm, [], this,(response) => {
+                this.$success(this.$t('commons.save_success'));
+                this.visible = false;
+                this.$emit('refresh');
+              });
+            }
+          } else {
+            return false;
+          }
+        })
+      },
+      setParameter() {
+        this.scenarioForm.projectId = this.projectId;
+        this.scenarioForm.id = getUUID().substring(0, 8);
+        this.scenarioForm.protocol = this.currentProtocol;
+
+        if (this.currentModule && this.currentModule.id != "root") {
+          this.scenarioForm.modulePath = this.currentModule.method !== undefined ? this.currentModule.method : null;
+          this.scenarioForm.apiScenarioModuleId = this.currentModule.id;
+        } else {
+          this.scenarioForm.modulePath = this.$t("commons.module_title");
+          this.scenarioForm.apiScenarioModuleId = "default-module";
+        }
+      },
+      getMaintainerOptions() {
+        this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
+          this.userOptions = response.data;
+        });
+      },
+      open(currentModule) {
+        this.scenarioForm = {principal: getCurrentUser().id};
+        this.currentModule = currentModule;
+        this.getMaintainerOptions();
+        this.visible = true;
+      }
     }
   }
-}
 </script>

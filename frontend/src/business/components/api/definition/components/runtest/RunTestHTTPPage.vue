@@ -1,11 +1,14 @@
 <template>
 
   <div class="card-container">
-    <el-card class="card-content" v-loading="loading">
+    <div class="ms-opt-btn" v-if="versionEnable">
+      {{ $t('project.version.name') }}: {{ apiData.versionName }}
+    </div>
+    <el-card class="card-content">
 
       <el-form :model="api" :rules="rules" ref="apiData" :inline="true" label-position="right">
 
-        <p class="tip">{{$t('test_track.plan_view.base_info')}} </p>
+        <p class="tip">{{ $t('test_track.plan_view.base_info') }} </p>
         <!-- 请求方法 -->
         <el-form-item :label="$t('api_report.request')" prop="method">
           <el-select v-model="api.request.method" style="width: 100px" size="small">
@@ -15,261 +18,326 @@
 
         <!-- 执行环境 -->
         <el-form-item prop="environmentId">
-          <el-select v-model="api.environmentId" size="small" class="ms-htt-width"
-                     :placeholder="$t('api_test.definition.request.run_env')"
-                     @change="environmentChange" clearable>
-            <el-option v-for="(environment, index) in environments" :key="index"
-                       :label="environment.name + (environment.config.httpConfig.socket ? (': ' + environment.config.httpConfig.protocol + '://' + environment.config.httpConfig.socket) : '')"
-                       :value="environment.id"/>
-            <el-button class="environment-button" size="mini" type="primary" @click="openEnvironmentConfig">
-              {{ $t('api_test.environment.environment_config') }}
-            </el-button>
-            <template v-slot:empty>
-              <div class="empty-environment">
-                <el-button class="environment-button" size="mini" type="primary" @click="openEnvironmentConfig">
-                  {{ $t('api_test.environment.environment_config') }}
-                </el-button>
-              </div>
-            </template>
-          </el-select>
+          <environment-select :current-data="api" :project-id="projectId" ref="environmentSelect"/>
         </el-form-item>
 
         <!-- 请求地址 -->
         <el-form-item prop="path">
-          <el-input :placeholder="$t('api_test.definition.request.path_info')" v-model="api.request.path" class="ms-htt-width"
+          <el-input :placeholder="$t('api_test.definition.request.path_info')" v-model="api.request.path"
+                    class="ms-htt-width"
                     size="small" :disabled="false"/>
         </el-form-item>
 
         <!-- 操作按钮 -->
         <el-form-item>
           <el-dropdown split-button type="primary" class="ms-api-buttion" @click="handleCommand('add')"
-                       @command="handleCommand" size="small">
-            {{$t('commons.test')}}
+                       @command="handleCommand" size="small" v-if="!runLoading">
+            {{ $t('commons.test') }}
             <el-dropdown-menu slot="dropdown">
-              <el-dropdown-item command="load_case">{{$t('api_test.definition.request.load_case')}}
+              <el-dropdown-item command="load_case">{{ $t('api_test.definition.request.load_case') }}
               </el-dropdown-item>
-              <el-dropdown-item command="save_as_case">{{$t('api_test.definition.request.save_as_case')}}
+              <el-dropdown-item command="save_as_case">{{ $t('api_test.definition.request.save_as_case') }}
               </el-dropdown-item>
-              <el-dropdown-item command="update_api">{{$t('api_test.definition.request.update_api')}}</el-dropdown-item>
-              <el-dropdown-item command="save_as_api">{{$t('api_test.definition.request.save_as')}}</el-dropdown-item>
+              <el-dropdown-item command="update_api">{{
+                  $t('api_test.definition.request.update_api')
+                }}
+              </el-dropdown-item>
+              <el-dropdown-item command="save_as_api">{{ $t('api_test.definition.request.save_as') }}</el-dropdown-item>
             </el-dropdown-menu>
           </el-dropdown>
 
+          <el-button size="small" type="primary" v-else @click.once="stop">{{ $t('report.stop_btn') }}</el-button>
+
+          <el-button size="small" type="primary" @click.stop @click="generate"
+                     style="margin-left: 10px"
+                     v-if="hasPermission('PROJECT_API_DEFINITION:READ+CREATE_API') && hasLicense()">
+            {{ $t('commons.generate_test_data') }}
+          </el-button>
+
         </el-form-item>
 
-        <p class="tip">{{$t('api_test.definition.request.req_param')}} </p>
-        <!-- HTTP 请求参数 -->
-        <ms-api-request-form :headers="api.request.headers" :request="api.request"/>
 
       </el-form>
-      <!--返回结果-->
-      <!-- HTTP 请求返回数据 -->
-      <p class="tip">{{$t('api_test.definition.request.res_param')}} </p>
-      <ms-request-result-tail :response="responseData" ref="runResult"/>
+      <div v-loading="loading">
+        <p class="tip">{{ $t('api_test.definition.request.req_param') }} </p>
+        <!-- HTTP 请求参数 -->
+        <ms-api-request-form :isShowEnable="true" :definition-test="true" :headers="api.request.headers" :response="responseData"
+                             v-if="loadRequest"
+                             :request="api.request" ref="apiRequestForm"/>
+        <!--返回结果-->
+        <!-- HTTP 请求返回数据 -->
+        <p class="tip">{{ $t('api_test.definition.request.res_param') }} </p>
+        <ms-request-result-tail :response="responseData" ref="runResult"/>
+      </div>
 
     </el-card>
 
     <!-- 加载用例 -->
-    <ms-api-case-list @selectTestCase="selectTestCase"
+    <ms-api-case-list @selectTestCase="selectTestCase" @refresh="refresh"
                       :loaded="loaded"
                       :refreshSign="refreshSign"
                       :createCase="createCase"
                       :currentApi="api"
                       ref="caseList"/>
 
-    <!-- 环境 -->
-    <api-environment-config ref="environmentConfig" @close="environmentConfigClose"/>
     <!-- 执行组件 -->
-    <ms-run :debug="false" :environment="api.environment" :reportId="reportId" :run-data="runData"
-            @runRefresh="runRefresh" ref="runTest"/>
+    <ms-run :debug="false" :environment="api.environment" :reportId="reportId" :run-data="runData" :env-map="envMap"
+            @runRefresh="runRefresh" @errorRefresh="errorRefresh" ref="runTest"/>
 
   </div>
 </template>
 
 <script>
-  import MsApiRequestForm from "../request/http/ApiRequestForm";
-  import {downloadFile, getUUID, getCurrentProjectID} from "@/common/js/utils";
-  import MsApiCaseList from "../ApiCaseList";
-  import MsContainer from "../../../../common/components/MsContainer";
-  import {parseEnvironment} from "../../model/EnvironmentModel";
-  import ApiEnvironmentConfig from "../environment/ApiEnvironmentConfig";
-  import MsRequestResultTail from "../response/RequestResultTail";
-  import MsRun from "../Run";
-  import {REQ_METHOD} from "../../model/JsonData";
+import MsApiRequestForm from "../request/http/ApiHttpRequestForm";
+import {getUUID, hasLicense, hasPermission} from "@/common/js/utils";
+import MsApiCaseList from "../case/ApiCaseList";
+import MsContainer from "../../../../common/components/MsContainer";
+import MsRequestResultTail from "../response/RequestResultTail";
+import MsRun from "../Run";
+import {REQ_METHOD} from "../../model/JsonData";
+import EnvironmentSelect from "../environment/EnvironmentSelect";
+import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
 
-  export default {
-    name: "RunTestHTTPPage",
-    components: {
-      MsApiRequestForm,
-      MsApiCaseList,
-      MsContainer,
-      MsRequestResultTail,
-      ApiEnvironmentConfig,
-      MsRun
+export default {
+  name: "RunTestHTTPPage",
+  components: {
+    EnvironmentSelect,
+    MsApiRequestForm,
+    MsApiCaseList,
+    MsContainer,
+    MsRequestResultTail,
+    MsRun,
+  },
+  data() {
+    return {
+      visible: false,
+      api: {},
+      loaded: false,
+      loading: false,
+      loadRequest: true,
+      createCase: "",
+      currentRequest: {},
+      refreshSign: "",
+      responseData: {type: 'HTTP', responseResult: {}, subRequestResults: []},
+      reqOptions: REQ_METHOD,
+      rules: {
+        method: [{required: true, message: this.$t('test_track.case.input_maintainer'), trigger: 'change'}],
+        path: [{required: true, message: this.$t('api_test.definition.request.path_info'), trigger: 'blur'}],
+        environmentId: [{required: true, message: this.$t('api_test.definition.request.run_env'), trigger: 'change'}],
+      },
+      runData: [],
+      reportId: "",
+      envMap: new Map,
+      runLoading: false,
+      versionEnable: false,
+    }
+  },
+  props: {apiData: {}, currentProtocol: String, syncTabs: Array, projectId: String},
+  computed: {
+    'api.environmentId'() {
+      return this.$store.state.useEnvironment;
+    }
+  },
+  watch: {
+    '$store.state.useEnvironment': function () {
+      this.api.environmentId = this.$store.state.useEnvironment;
+    }
+  },
+  methods: {
+    hasPermission, hasLicense,
+    generate() {
+      this.$refs.apiRequestForm.generate();
     },
-    data() {
-      return {
-        visible: false,
-        api: {},
-        loaded: false,
-        loading: false,
-        createCase: "",
-        currentRequest: {},
-        refreshSign: "",
-        responseData: {type: 'HTTP', responseResult: {}, subRequestResults: []},
-        reqOptions: REQ_METHOD,
-        environments: [],
-        rules: {
-          method: [{required: true, message: this.$t('test_track.case.input_maintainer'), trigger: 'change'}],
-          path: [{required: true, message: this.$t('api_test.definition.request.path_info'), trigger: 'blur'}],
-          environmentId: [{required: true, message: this.$t('api_test.definition.request.run_env'), trigger: 'change'}],
-        },
-        runData: [],
-        reportId: "",
-        projectId: "",
-      }
-    },
-    props: {apiData: {}, currentProtocol: String,},
-    methods: {
-      handleCommand(e) {
-        switch (e) {
-          case "load_case":
-            return this.loadCase();
-          case "save_as_case":
-            return this.saveAsCase();
-          case "update_api":
-            return this.updateApi();
-          case "save_as_api":
-            return this.saveAsApi();
-          default:
-            return this.runTest();
+    setRequestParam(param, isEnvironmentMock) {
+      this.init();
+      if (param) {
+        if (param.headers) {
+          this.api.request.headers = param.headers;
         }
-      },
-      runTest() {
-        this.$refs['apiData'].validate((valid) => {
-          if (valid) {
-            this.loading = true;
-            this.api.request.name = this.api.id;
-            this.api.request.useEnvironment = this.api.environmentId;
-            this.api.protocol = this.currentProtocol;
-            this.runData = [];
-            this.runData.push(this.api.request);
-            /*触发执行操作*/
-            this.reportId = getUUID().substring(0, 8);
-          }
-        })
-      },
-      runRefresh(data) {
-        this.responseData = data;
-        this.loading = false;
-      },
-      saveAs() {
-        this.$emit('saveAs', this.api);
-      },
-      loadCase() {
-        this.refreshSign = getUUID();
-        this.loaded = true;
-        this.$refs.caseList.open();
-      },
-      apiCaseClose() {
-        this.visible = false;
-      },
-      getBodyUploadFiles() {
-        let bodyUploadFiles = [];
-        this.api.bodyUploadIds = [];
-        let request = this.api.request;
-        if (request.body) {
-          request.body.kvs.forEach(param => {
-            if (param.files) {
-              param.files.forEach(item => {
-                if (item.file) {
-                  let fileId = getUUID().substring(0, 8);
-                  item.name = item.file.name;
-                  item.id = fileId;
-                  this.api.bodyUploadIds.push(fileId);
-                  bodyUploadFiles.push(item.file);
-                }
-              });
+        if (param.arguments !== null && param.arguments.length > 0) {
+          for (let i = 0; i < param.arguments.length; i++) {
+            if (!param.arguments[i].required) {
+              param.arguments[i].required = true;
             }
-          });
+          }
+          this.api.request.arguments = param.arguments;
         }
-        return bodyUploadFiles;
-      },
-      saveAsCase() {
-        //用于触发创建操作
-        this.createCase = getUUID();
-        this.$refs.caseList.open();
-        this.loaded = false;
-      },
-      saveAsApi() {
-        let data = {};
-        data.request = JSON.stringify(this.api.request);
-        data.method = this.api.method;
-        data.url = this.api.url;
-        data.status = this.api.status;
-        data.userId = this.api.userId;
-        data.description = this.api.description;
-        this.$emit('saveAsApi', data);
-      },
-      updateApi() {
-        let url = "/api/definition/update";
-        let bodyFiles = this.getBodyUploadFiles();
-        this.$fileUpload(url, null, bodyFiles, this.api, () => {
-          this.$success(this.$t('commons.save_success'));
-          this.$emit('saveApi', this.api);
-        });
-      },
-      selectTestCase(item) {
-        if (item != null) {
-          this.api.request = item.request;
-        } else {
-          this.api.request = this.currentRequest;
-        }
-      },
-      getEnvironments() {
-        if (this.projectId) {
-          this.$get('/api/environment/list/' + this.projectId, response => {
-            this.environments = response.data;
-            this.environments.forEach(environment => {
-              parseEnvironment(environment);
-            });
-            let hasEnvironment = false;
-            for (let i in this.environments) {
-              if (this.environments[i].id === this.api.environmentId) {
-                this.api.environment = this.environments[i];
-                hasEnvironment = true;
-                break;
+        if (param.body) {
+          if (param.body.kvs) {
+            for (let i = 0; i < param.body.kvs.length; i++) {
+              if (!param.body.kvs[i].required) {
+                param.body.kvs[i].required = true;
               }
             }
-            if (!hasEnvironment) {
-              this.api.environmentId = '';
-              this.api.environment = undefined;
+          }
+
+          this.api.request.body = param.body;
+        }
+        if (param.rest) {
+          for (let i = 0; i < param.rest.length; i++) {
+            if (!param.rest[i].required) {
+              param.rest[i].required = true;
+            }
+          }
+          this.api.request.rest = param.rest;
+        }
+      }
+      if (isEnvironmentMock) {
+        this.$nextTick(() => {
+          let url = "/api/definition/getMockEnvironment/";
+          this.$get(url + this.projectId, response => {
+            let mockEnvironment = response.data;
+            if (mockEnvironment !== null) {
+              this.$refs.environmentSelect.setEnvironment(mockEnvironment.id);
             }
           });
-        } else {
-          this.api.environmentId = '';
-          this.api.environment = undefined;
+        })
+      }
+      this.loadRequest = false;
+      this.$nextTick(() => {
+        this.loadRequest = true;
+      })
+    },
+    handleCommand(e) {
+      switch (e) {
+        case "load_case":
+          return this.loadCase();
+        case "save_as_case":
+          return this.saveAsCase();
+        case "update_api":
+          return this.updateApi();
+        case "save_as_api":
+          return this.saveAsApi();
+        default:
+          return this.runTest();
+      }
+    },
+    runTest() {
+      this.$refs['apiData'].validate((valid) => {
+        if (valid) {
+          this.runLoading = true;
+          this.loading = true;
+          this.api.request.name = this.api.id;
+          this.api.request.url = undefined;
+          this.api.request.useEnvironment = this.api.environmentId;
+          this.api.protocol = this.currentProtocol;
+          this.runData = [];
+          this.runData.push(this.api.request);
+          /*触发执行操作*/
+          this.reportId = getUUID().substring(0, 8);
         }
-      },
-      openEnvironmentConfig() {
-        if (!this.projectId) {
-          this.$error(this.$t('api_test.select_project'));
-          return;
-        }
-        this.$refs.environmentConfig.open(this.projectId);
-      },
-      environmentChange(value) {
-        for (let i in this.environments) {
-          if (this.environments[i].id === value) {
-            this.api.request.useEnvironment = this.environments[i].id;
-            break;
+      })
+    },
+    errorRefresh() {
+      this.loading = false;
+      this.runLoading = false;
+    },
+    runRefresh(data) {
+      this.responseData = {type: 'HTTP', responseResult: {responseCode: ""}, subRequestResults: []};
+      if (data) {
+        this.responseData = data;
+      }
+      this.loading = false;
+      this.runLoading = false;
+    },
+    saveAs() {
+      this.$emit('saveAs', this.api);
+    },
+    loadCase() {
+      this.refreshSign = getUUID();
+      this.loaded = true;
+      this.$refs.caseList.open();
+    },
+    apiCaseClose() {
+      this.visible = false;
+    },
+    getBodyUploadFiles() {
+      let bodyUploadFiles = [];
+      this.api.bodyUploadIds = [];
+      let request = this.api.request;
+      if (request.body) {
+        request.body.kvs.forEach(param => {
+          if (param.files) {
+            param.files.forEach(item => {
+              if (item.file) {
+                item.name = item.file.name;
+                bodyUploadFiles.push(item.file);
+              }
+            });
+          }
+        });
+      }
+      return bodyUploadFiles;
+    },
+    saveAsCase() {
+      //用于触发创建操作
+      this.$emit('saveAsCase', this.api);
+    },
+    saveAsApi() {
+      let data = {};
+      let req = this.api.request;
+      req.id = getUUID();
+      data.request = JSON.stringify(req);
+      data.method = req.method;
+      data.path = req.path;
+      data.url = this.api.url;
+      data.status = this.api.status;
+      data.userId = this.api.userId;
+      data.description = this.api.description;
+      this.$emit('saveAsApi', data);
+    },
+    compatibleHistory(stepArray) {
+      if (stepArray) {
+        for (let i in stepArray) {
+          if (!stepArray[i].clazzName) {
+            stepArray[i].clazzName = TYPE_TO_C.get(stepArray[i].type);
+          }
+          if (stepArray[i] && stepArray[i].authManager && !stepArray[i].authManager.clazzName) {
+            stepArray[i].authManager.clazzName = TYPE_TO_C.get(stepArray[i].authManager.type);
+          }
+          if (stepArray[i].hashTree && stepArray[i].hashTree.length > 0) {
+            this.compatibleHistory(stepArray[i].hashTree);
           }
         }
-      },
-      environmentConfigClose() {
-        this.getEnvironments();
-      },
-      getResult() {
+      }
+    },
+    updateApi() {
+      let url = "/api/definition/update";
+      let bodyFiles = this.getBodyUploadFiles();
+      this.api.method = this.api.request.method;
+      this.api.path = this.api.request.path;
+      if (Object.prototype.toString.call(this.api.response).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'object') {
+        this.api.response = JSON.parse(this.api.response);
+      }
+      if (this.api.tags instanceof Array) {
+        this.api.tags = JSON.stringify(this.api.tags);
+      }
+      // 历史数据兼容处理
+      if (this.api.request) {
+        this.api.request.clazzName = TYPE_TO_C.get(this.api.request.type);
+        this.compatibleHistory(this.api.request.hashTree);
+      }
+      this.$fileUpload(url, null, bodyFiles, this.api, () => {
+        this.$success(this.$t('commons.save_success'));
+        this.$emit('saveApi', this.api);
+        if (this.syncTabs.indexOf(this.api.id) === -1) {
+          this.syncTabs.push(this.api.id);
+        }
+      });
+    },
+    selectTestCase(item) {
+      if (item != null) {
+        this.api.request = item.request;
+      } else {
+        this.api.request = this.currentRequest;
+      }
+    },
+
+    refresh() {
+      this.$emit('refresh');
+    },
+    getResult() {
+      if (this.api.id) {
         let url = "/api/definition/report/getReport/" + this.api.id;
         this.$get(url, response => {
           if (response.data) {
@@ -279,35 +347,48 @@
         });
       }
     },
-    created() {
-      this.projectId = getCurrentProjectID();
-      this.api = this.apiData;
+    stop() {
+      let url = "/api/automation/stop/" + this.reportId;
+      this.$get(url, () => {
+        this.runLoading = false;
+        this.loading = false;
+        this.$success(this.$t('report.test_stop_success'));
+      });
+    },
+    checkVersionEnable() {
+      if (!this.projectId) {
+        return;
+      }
+      if (hasLicense()) {
+        this.$get('/project/version/enable/' + this.projectId, response => {
+          this.versionEnable = response.data;
+        });
+      }
+    },
+    init() {
+      // 深度复制
+      this.api = JSON.parse(JSON.stringify(this.apiData));
       this.api.protocol = this.currentProtocol;
       this.currentRequest = this.api.request;
-      this.getEnvironments();
-      this.getResult();
+      if (!this.api.environmentId && this.$store.state.useEnvironment) {
+        this.api.environmentId = this.$store.state.useEnvironment;
+      }
+      this.runLoading = false;
+      this.checkVersionEnable();
     }
+  },
+  created() {
+    this.init();
   }
+}
 </script>
 
 <style scoped>
-  .ms-htt-width {
-    width: 350px;
-  }
+.ms-htt-width {
+  width: 350px;
+}
 
-  .environment-button {
-    margin-left: 20px;
-    padding: 7px;
-  }
-
-  .tip {
-    padding: 3px 5px;
-    font-size: 16px;
-    border-radius: 4px;
-    border-left: 4px solid #783887;
-  }
-
-  /deep/ .el-drawer {
-    overflow: auto;
-  }
+/deep/ .el-drawer {
+  overflow: auto;
+}
 </style>

@@ -1,25 +1,40 @@
 package io.metersphere.api.dto.definition.request.sampler;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.fastjson.annotation.JSONType;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.ningyu.jmeter.plugin.dubbo.sample.DubboSample;
 import io.github.ningyu.jmeter.plugin.dubbo.sample.MethodArgument;
 import io.github.ningyu.jmeter.plugin.util.Constants;
-import io.metersphere.api.dto.definition.request.MsTestElement;
+import io.metersphere.api.dto.definition.request.ElementUtil;
 import io.metersphere.api.dto.definition.request.ParameterConfig;
 import io.metersphere.api.dto.definition.request.sampler.dubbo.MsConfigCenter;
 import io.metersphere.api.dto.definition.request.sampler.dubbo.MsConsumerAndService;
 import io.metersphere.api.dto.definition.request.sampler.dubbo.MsRegistryCenter;
 import io.metersphere.api.dto.scenario.KeyValue;
+import io.metersphere.api.service.ApiDefinitionService;
+import io.metersphere.api.service.ApiTestCaseService;
+import io.metersphere.base.domain.ApiDefinitionWithBLOBs;
+import io.metersphere.base.domain.ApiTestCaseWithBLOBs;
+import io.metersphere.commons.constants.MsTestElementConstants;
+import io.metersphere.commons.utils.CommonBeanFactory;
+import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.plugin.core.MsParameter;
+import io.metersphere.plugin.core.MsTestElement;
+import io.metersphere.utils.LoggerUtil;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.config.ConfigTestElement;
 import org.apache.jmeter.save.SaveService;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jorphan.collections.HashTree;
-import org.apache.jorphan.collections.ListedHashTree;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -28,11 +43,15 @@ import java.util.stream.Collectors;
 @EqualsAndHashCode(callSuper = true)
 @JSONType(typeName = "DubboSampler")
 public class MsDubboSampler extends MsTestElement {
-    // type 必须放最前面，以便能够转换正确的类
+    private String clazzName = MsDubboSampler.class.getCanonicalName();
+
+    /**
+     * type 必须放最前面，以便能够转换正确的类
+     */
     private String type = "DubboSampler";
 
     @JSONField(ordinal = 52)
-    private String protocol;
+    private final String protocol = "dubbo://";
     @JsonProperty(value = "interface")
     @JSONField(ordinal = 53, name = "interface")
     private String _interface;
@@ -51,33 +70,102 @@ public class MsDubboSampler extends MsTestElement {
     @JSONField(ordinal = 59)
     private List<KeyValue> attachmentArgs;
 
-    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, ParameterConfig config) {
-        if (!this.isEnable()) {
+    @JSONField(ordinal = 60)
+    private String useEnvironment;
+
+    @JSONField(ordinal = 61)
+    private boolean customizeReq;
+
+
+    @Override
+    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, MsParameter msParameter) {
+        ParameterConfig config = (ParameterConfig) msParameter;
+        // 非导出操作，且不是启用状态则跳过执行
+        if (!config.isOperating() && !this.isEnable()) {
             return;
         }
-        if (this.getReferenced() != null && this.getReferenced().equals("Deleted")) {
+        if (this.getReferenced() != null && "Deleted".equals(this.getReferenced())) {
             return;
         }
-        if (this.getReferenced() != null && this.getReferenced().equals("REF")) {
-            this.getRefElement(this);
+        if (this.getReferenced() != null && MsTestElementConstants.REF.name().equals(this.getReferenced())) {
+            boolean ref = this.setRefElement();
+            if (!ref) {
+                LoggerUtil.debug("引用对象已经被删除：" + this.getId());
+                return;
+            }
+            hashTree = this.getHashTree();
         }
 
-        final HashTree testPlanTree = new ListedHashTree();
-        testPlanTree.add(dubboConfig());
-        tree.set(dubboSample(), testPlanTree);
+        final HashTree testPlanTree = tree.add(dubboSample(config));
         if (CollectionUtils.isNotEmpty(hashTree)) {
+            hashTree = ElementUtil.order(hashTree);
             hashTree.forEach(el -> {
                 el.toHashTree(testPlanTree, el.getHashTree(), config);
             });
         }
     }
 
-    private DubboSample dubboSample() {
+    private boolean setRefElement() {
+        try {
+            ApiDefinitionService apiDefinitionService = CommonBeanFactory.getBean(ApiDefinitionService.class);
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            MsDubboSampler proxy = null;
+            if (StringUtils.equals(this.getRefType(), "CASE")) {
+                ApiTestCaseService apiTestCaseService = CommonBeanFactory.getBean(ApiTestCaseService.class);
+                ApiTestCaseWithBLOBs bloBs = apiTestCaseService.get(this.getId());
+                if (bloBs != null) {
+                    this.setProjectId(bloBs.getProjectId());
+                    JSONObject element = JSON.parseObject(bloBs.getRequest());
+                    ElementUtil.dataFormatting(element);
+                    proxy = mapper.readValue(element.toJSONString(), new TypeReference<MsDubboSampler>() {
+                    });
+                    this.setName(bloBs.getName());
+                }
+            } else {
+                ApiDefinitionWithBLOBs apiDefinition = apiDefinitionService.getBLOBs(this.getId());
+                if (apiDefinition != null) {
+                    this.setProjectId(apiDefinition.getProjectId());
+                    proxy = mapper.readValue(apiDefinition.getRequest(), new TypeReference<MsDubboSampler>() {
+                    });
+                    this.setName(apiDefinition.getName());
+                }
+            }
+            if (proxy != null) {
+                if (StringUtils.equals(this.getRefType(), "CASE")) {
+                    ElementUtil.mergeHashTree(this, proxy.getHashTree());
+                } else {
+                    this.setHashTree(proxy.getHashTree());
+                }
+                this.setMethod(proxy.getMethod());
+                this.set_interface(proxy.get_interface());
+                this.setAttachmentArgs(proxy.getAttachmentArgs());
+                this.setArgs(proxy.getArgs());
+                this.setConsumerAndService(proxy.getConsumerAndService());
+                this.setRegistryCenter(proxy.getRegistryCenter());
+                this.setConfigCenter(proxy.getConfigCenter());
+                return true;
+            }
+        } catch (Exception ex) {
+            LogUtil.error(ex);
+        }
+        return false;
+    }
+
+    private DubboSample dubboSample(ParameterConfig config) {
         DubboSample sampler = new DubboSample();
+        sampler.setEnabled(this.isEnable());
         sampler.setName(this.getName());
+        if (config.isOperating()) {
+            String[] testNameArr = sampler.getName().split("<->");
+            if (testNameArr.length > 0) {
+                String testName = testNameArr[0];
+                sampler.setName(testName);
+            }
+        }
         sampler.setProperty(TestElement.TEST_CLASS, DubboSample.class.getName());
         sampler.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("DubboSampleGui"));
-
+        ElementUtil.setBaseParams(sampler, this.getParent(), config, this.getId(), this.getIndex());
         sampler.addTestElement(configCenter(this.getConfigCenter()));
         sampler.addTestElement(registryCenter(this.getRegistryCenter()));
         sampler.addTestElement(consumerAndService(this.getConsumerAndService()));
@@ -86,33 +174,22 @@ public class MsDubboSampler extends MsTestElement {
         Constants.setInterfaceName(this.get_interface(), sampler);
         Constants.setMethod(this.getMethod(), sampler);
 
-        List<MethodArgument> methodArgs = this.getArgs().stream().filter(KeyValue::isValid).filter(KeyValue::isEnable)
-                .map(keyValue -> new MethodArgument(keyValue.getName(), keyValue.getValue())).collect(Collectors.toList());
-        Constants.setMethodArgs(methodArgs, sampler);
-
-        List<MethodArgument> attachmentArgs = this.getAttachmentArgs().stream().filter(KeyValue::isValid).filter(KeyValue::isEnable)
-                .map(keyValue -> new MethodArgument(keyValue.getName(), keyValue.getValue())).collect(Collectors.toList());
-        Constants.setAttachmentArgs(attachmentArgs, sampler);
-
+        if (CollectionUtils.isNotEmpty(this.getArgs())) {
+            List<MethodArgument> methodArgs = this.getArgs().stream().filter(KeyValue::isValid).filter(KeyValue::isEnable)
+                    .map(keyValue -> new MethodArgument(keyValue.getName(), keyValue.getValue())).collect(Collectors.toList());
+            Constants.setMethodArgs(methodArgs, sampler);
+        }
+        if (CollectionUtils.isNotEmpty(this.getAttachmentArgs())) {
+            List<MethodArgument> attachmentArgs = this.getAttachmentArgs().stream().filter(KeyValue::isValid).filter(KeyValue::isEnable)
+                    .map(keyValue -> new MethodArgument(keyValue.getName(), keyValue.getValue())).collect(Collectors.toList());
+            Constants.setAttachmentArgs(attachmentArgs, sampler);
+        }
         return sampler;
-    }
-
-
-    private ConfigTestElement dubboConfig() {
-        ConfigTestElement configTestElement = new ConfigTestElement();
-        configTestElement.setEnabled(true);
-        configTestElement.setName(this.getName());
-        configTestElement.setProperty(TestElement.TEST_CLASS, ConfigTestElement.class.getName());
-        configTestElement.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("DubboDefaultConfigGui"));
-        configTestElement.addConfigElement(configCenter(this.getConfigCenter()));
-        configTestElement.addConfigElement(registryCenter(this.getRegistryCenter()));
-        configTestElement.addConfigElement(consumerAndService(this.getConsumerAndService()));
-        return configTestElement;
     }
 
     private ConfigTestElement configCenter(MsConfigCenter configCenter) {
         ConfigTestElement configTestElement = new ConfigTestElement();
-        if (configCenter != null) {
+        if (configCenter != null && configCenter.getProtocol() != null && configCenter.getUsername() != null && configCenter.getPassword() != null) {
             Constants.setConfigCenterProtocol(configCenter.getProtocol(), configTestElement);
             Constants.setConfigCenterGroup(configCenter.getGroup(), configTestElement);
             Constants.setConfigCenterNamespace(configCenter.getNamespace(), configTestElement);

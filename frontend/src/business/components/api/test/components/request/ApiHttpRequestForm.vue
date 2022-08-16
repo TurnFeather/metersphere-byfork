@@ -93,8 +93,8 @@ import MsApiExtract from "../extract/ApiExtract";
 import ApiRequestMethodSelect from "../collapse/ApiRequestMethodSelect";
 import {REQUEST_HEADERS} from "@/common/js/constants";
 import MsApiVariable from "@/business/components/api/test/components/ApiVariable";
-import MsJsr233Processor from "../processor/Jsr233Processor";
 import MsApiAdvancedConfig from "../ApiAdvancedConfig";
+import MsJsr233Processor from "../processor/Jsr233Processor";
 
 export default {
   name: "MsApiHttpRequestForm",
@@ -193,9 +193,24 @@ export default {
 
   computed: {
     displayUrl() {
-      return (this.scenario.environment && this.scenario.environment.config.httpConfig.socket) ?
-        this.scenario.environment.config.httpConfig.protocol + '://' + this.scenario.environment.config.httpConfig.socket + (this.request.path ? this.request.path : '')
-        : '';
+      let url = null;
+      if(this.scenario.environment && this.scenario.environment.config.httpConfig
+        && this.scenario.environment.config.httpConfig.conditions && this.scenario.environment.config.httpConfig.conditions.length > 0){
+        for(let i in this.scenario.environment.config.httpConfig.conditions) {
+          if (this.scenario.environment.config.httpConfig.conditions[i]) {
+            let item = this.scenario.environment.config.httpConfig.conditions[i];
+            if (item.type === 'NONE') {
+              url = item.protocol + '://' + item.socket + (this.request.path ? this.request.path : '');
+            }
+          }
+        }
+      }
+      if(url === null) {
+        url = (this.scenario.environment && this.scenario.environment.config.httpConfig.socket) ?
+          this.scenario.environment.config.httpConfig.protocol + '://' + this.scenario.environment.config.httpConfig.socket + (this.request.path ? this.request.path : '')
+          : '';
+      }
+      return url;
     }
   }
 }

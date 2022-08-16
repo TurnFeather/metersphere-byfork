@@ -2,12 +2,14 @@ package io.metersphere.api.dto.definition.request.configurations;
 
 import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.fastjson.annotation.JSONType;
-import io.metersphere.api.dto.definition.request.MsTestElement;
 import io.metersphere.api.dto.definition.request.ParameterConfig;
 import io.metersphere.api.dto.scenario.KeyValue;
+import io.metersphere.plugin.core.MsParameter;
+import io.metersphere.plugin.core.MsTestElement;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.protocol.http.control.Header;
 import org.apache.jmeter.protocol.http.control.HeaderManager;
 import org.apache.jmeter.save.SaveService;
@@ -22,16 +24,17 @@ import java.util.List;
 public class MsHeaderManager extends MsTestElement {
 
     private String type = "HeaderManager";
-    @JSONField(ordinal = 10)
+    private String clazzName = MsHeaderManager.class.getCanonicalName();
+
+    @JSONField(ordinal = 20)
     private List<KeyValue> headers;
 
-    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, ParameterConfig config) {
-        if (!this.isEnable()) {
-            return;
-        }
+    @Override
+    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, MsParameter msParameter) {
+        ParameterConfig config = (ParameterConfig) msParameter;
         HeaderManager headerManager = new HeaderManager();
-        headerManager.setEnabled(true);
-        headerManager.setName(this.getName() + "Headers");
+        headerManager.setEnabled(this.isEnable());
+        headerManager.setName(StringUtils.isNotEmpty(this.getName()) ? this.getName() + "HeaderManager" : "HeaderManager");
         headerManager.setProperty(TestElement.TEST_CLASS, HeaderManager.class.getName());
         headerManager.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("HeaderPanel"));
         headers.stream().filter(KeyValue::isValid).filter(KeyValue::isEnable).forEach(keyValue ->

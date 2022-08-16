@@ -20,6 +20,24 @@ public class ApiDefinitionExecResult implements Serializable {
 
     private Long endTime;
 
+    private Long createTime;
+
+    private String type;
+
+    private String actuator;
+
+    private String triggerMode;
+
+    private String errorCode;
+
+    private String versionId;
+
+    private String projectId;
+
+    private String integratedReportId;
+
+    private String reportType;
+
     private String content;
 
     private static final long serialVersionUID = 1L;

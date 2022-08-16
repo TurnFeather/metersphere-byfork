@@ -14,6 +14,12 @@
       <el-tab-pane v-if="hasLicense()" :label="$t('display.title')" name="display">
         <ms-display/>
       </el-tab-pane>
+      <el-tab-pane v-if="hasLicense()" :label="$t('auth_source.title')" name="auth">
+        <ms-auth/>
+      </el-tab-pane>
+      <el-tab-pane v-if="hasLicense()" :label="$t('module.title')" name="module">
+        <ms-module/>
+      </el-tab-pane>
     </el-tabs>
   </el-card>
 </template>
@@ -26,6 +32,8 @@ import {hasLicense} from '@/common/js/utils';
 
 const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
 const display = requireComponent.keys().length > 0 ? requireComponent("./display/Display.vue") : {};
+const auth = requireComponent.keys().length > 0 ? requireComponent("./auth/Auth.vue") : {};
+const module = requireComponent.keys().length > 0 ? requireComponent("./module/Module.vue") : {};
 
 export default {
   name: "SystemParameterSetting",
@@ -33,17 +41,19 @@ export default {
     BaseSetting,
     EmailSetting,
     LdapSetting,
-    "MsDisplay": display.default
+    "MsDisplay": display.default,
+    "MsAuth": auth.default,
+    "MsModule": module.default,
   },
   data() {
     return {
       activeName: 'base',
-    }
+    };
   },
   methods: {
     hasLicense,
   }
-}
+};
 </script>
 
 <style scoped>

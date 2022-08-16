@@ -1,5 +1,5 @@
 <template>
-  <editor v-model="formatData" :lang="mode" @init="editorInit" :theme="theme" :height="height"/>
+  <editor v-model="formatData" :lang="mode" @init="editorInit" :theme="theme" :height="height" :key="readOnly"/>
 </template>
 
 <script>
@@ -17,7 +17,10 @@
     props: {
       height: [String, Number],
       data: {
-        type: String
+        type: String,
+        default() {
+          return ''
+        }
       },
       theme: {
         type: String,

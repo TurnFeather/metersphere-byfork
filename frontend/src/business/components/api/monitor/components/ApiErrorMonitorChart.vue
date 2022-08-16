@@ -2,7 +2,7 @@
   <common-monitor-chart>
     <template>
       <div id="response-time-chart" :style="{ width:'100%',height:'100%' }">
-        <chart :options="getOptions()" :style="{ width:'100%' }" v-on:click="click"></chart>
+        <chart :option="getOptions()" :style="{ width:'100%' }" v-on:click="click"></chart>
       </div>
     </template>
   </common-monitor-chart>
@@ -28,9 +28,7 @@ export default {
   methods: {
     click(params) {
       let startTime = params.name;
-      this.result = this.$$get('/api/monitor/getReportId', {'startTime': startTime}, {
-        'apiUrl': this.apiUrl
-      }, response => {
+      this.result = this.$post('/api/monitor/getReportId', {'startTime': startTime, 'apiUrl': this.apiUrl}, response => {
         this.reportId = response.data;
         let reportId = this.reportId
         let url = '#/api/report/view/' + reportId;

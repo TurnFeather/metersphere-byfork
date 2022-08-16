@@ -7,12 +7,12 @@
                :visible.sync="dialogFormVisible"
                @close="close"
                v-loading="result.loading"
-               width="65%">
+               width="60%">
 
       <el-form :model="form" :rules="rules" ref="reviewForm">
 
         <el-row>
-          <el-col :span="8" :offset="1">
+          <el-col :span="10">
             <el-form-item
               :placeholder="$t('test_track.review.input_review_name')"
               :label="$t('test_track.review.review_name')"
@@ -21,33 +21,21 @@
               <el-input v-model="form.name"/>
             </el-form-item>
           </el-col>
-
-          <el-col :span="11" :offset="2">
-            <el-form-item :label="$t('test_track.review.review_project')" :label-width="formLabelWidth" prop="projectIds">
-              <el-select
-                v-model="form.projectIds"
-                :placeholder="$t('test_track.review.input_review_project')"
-                multiple
-                style="width: 100%"
-                filterable>
-                <el-option
-                  v-for="item in projects"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id">
-                </el-option>
-              </el-select>
+          <el-col :span="12" :offset="1">
+            <el-form-item :label="$t('commons.tag')" :label-width="formLabelWidth" prop="tag">
+              <ms-input-tag :currentScenario="form" ref="tag" size="-" v-if="isStepTableAlive"/>
             </el-form-item>
           </el-col>
         </el-row>
 
         <el-row>
-          <el-col :span="10" :offset="1">
+          <el-col :span="10">
             <el-form-item :label="$t('test_track.review.reviewer')" :label-width="formLabelWidth" prop="userIds">
               <el-select
                 v-model="form.userIds"
                 :placeholder="$t('test_track.review.input_reviewer')"
                 filterable multiple
+                style="width: 100%"
               >
                 <el-option
                   v-for="item in reviewerOptions"
@@ -58,18 +46,32 @@
               </el-select>
             </el-form-item>
           </el-col>
-
-          <el-col :span="10">
+          <el-col :span="12" :offset="1">
+<!--            <el-form-item :label="$t('test_track.review.review_follow_people')" :label-width="formLabelWidth"
+                          prop="followIds">
+              <el-select v-model="form.followIds"
+                         clearable multiple
+                         :placeholder="$t('test_track.review.review_follow_people')" filterable size="small">
+                <el-option
+                  v-for="item in reviewerOptions"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id">
+                </el-option>
+              </el-select>
+            </el-form-item>-->
+          </el-col>
+          <el-col :span="12">
             <el-form-item :label="$t('test_track.review.end_time')" :label-width="formLabelWidth" prop="endTime">
               <el-date-picker @change="endTimeChange" type="datetime" :placeholder="$t('commons.select_date')"
-                              v-model="form.endTime"/>
+                              v-model="form.endTime" style="width: 100%"/>
             </el-form-item>
           </el-col>
         </el-row>
 
 
         <el-row type="flex" justify="left" style="margin-top: 10px;">
-          <el-col :span="23" :offset="1">
+          <el-col :span="23">
             <el-form-item :label="$t('commons.description')" :label-width="formLabelWidth" prop="description">
               <el-input v-model="form.description"
                         type="textarea"
@@ -81,7 +83,7 @@
         </el-row>
 
         <el-row v-if="operationType === 'edit'" type="flex" justify="left" style="margin-top: 10px;">
-          <el-col :span="19" :offset="1">
+          <el-col :span="19">
             <el-form-item :label="$t('test_track.review.review_status')" :label-width="formLabelWidth" prop="status">
               <test-plan-status-button :status="form.status" @statusChange="statusChange"/>
             </el-form-item>
@@ -98,6 +100,9 @@
           <el-button type="primary" @click="saveReview">
             {{ $t('test_track.confirm') }}
           </el-button>
+          <el-button type="primary" @click="reviewInfo">
+            {{ $t('test_track.planning_execution') }}
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -111,13 +116,15 @@
 
 import TestPlanStatusButton from "../../plan/common/TestPlanStatusButton";
 import {WORKSPACE_ID} from "@/common/js/constants";
-import {listenGoBack, removeGoBackListener} from "@/common/js/utils";
+import {getCurrentProjectID, listenGoBack, removeGoBackListener} from "@/common/js/utils";
+import MsInputTag from "@/business/components/api/automation/scenario/MsInputTag";
 
 export default {
   name: "TestCaseReviewEdit",
-  components: {TestPlanStatusButton},
+  components: {MsInputTag, TestPlanStatusButton},
   data() {
     return {
+      isStepTableAlive: true,
       dialogFormVisible: false,
       result: {},
       form: {
@@ -126,30 +133,38 @@ export default {
         userIds: [],
         stage: '',
         description: '',
-        endTime: ''
+        endTime: '',
+        followIds: [],
       },
       dbProjectIds: [],
       rules: {
         name: [
-          {required: true, message: this.$t('test_track.plan.input_plan_name'), trigger: 'blur'},
+          {required: true, message: this.$t('test_track.review.input_review_name'), trigger: 'blur'},
           {max: 30, message: this.$t('test_track.length_less_than') + '30', trigger: 'blur'}
         ],
-        projectIds: [{required: true, message: this.$t('test_track.plan.input_plan_project'), trigger: 'change'}],
-        userIds: [{required: true, message: this.$t('test_track.plan.input_plan_principal'), trigger: 'change'}],
+        // projectIds: [{required: true, message: this.$t('test_track.plan.input_plan_project'), trigger: 'change'}],
+        userIds: [{required: true, message: this.$t('test_track.review.input_reviewer'), trigger: 'change'}],
         stage: [{required: true, message: this.$t('test_track.plan.input_plan_stage'), trigger: 'change'}],
         description: [{max: 200, message: this.$t('test_track.length_less_than') + '200', trigger: 'blur'}],
-        endTime: [{required: true, message: '请选择截止时间', trigger: 'blur'}]
+        endTime: [{required: true, message: this.$t('commons.please_select_a_deadline'), trigger: 'blur'}]
       },
-      formLabelWidth: "120px",
+      formLabelWidth: "100px",
       operationType: '',
-      projects: [],
-      reviewerOptions: []
+      reviewerOptions: [],
     };
   },
+  computed: {
+    projectId() {
+      return getCurrentProjectID();
+    }
+  },
   methods: {
+    reload() {
+      this.isStepTableAlive = false;
+      this.$nextTick(() => (this.isStepTableAlive = true));
+    },
     openCaseReviewEditDialog(caseReview) {
       this.resetForm();
-      this.getProjects();
       this.setReviewerOptions();
       this.operationType = 'save';
       if (caseReview) {
@@ -159,16 +174,56 @@ export default {
         Object.assign(tmp, caseReview);
         Object.assign(this.form, tmp);
         this.dbProjectIds = JSON.parse(JSON.stringify(this.form.projectIds));
+      } else {
+        this.form.tags = [];
       }
+
       listenGoBack(this.close);
       this.dialogFormVisible = true;
+      this.reload();
     },
+    reviewInfo() {
+
+      this.$refs['reviewForm'].validate((valid) => {
+        if (valid) {
+          let param = {};
+          Object.assign(param, this.form);
+          param.name = param.name.trim();
+          if (this.form.tags instanceof Array) {
+            this.form.tags = JSON.stringify(this.form.tags);
+          }
+          param.tags = this.form.tags;
+          if (param.name === '') {
+            this.$warning(this.$t('test_track.plan.input_plan_name'));
+            return;
+          }
+
+          if (!this.compareTime(new Date().getTime(), this.form.endTime)) {
+            return false;
+          }
+          param.projectId = this.projectId;
+          if (this.projectId) {
+            this.result = this.$post('/test/case/review/' + this.operationType, param, response => {
+              this.dialogFormVisible = false;
+              this.$router.push('/track/review/view/' + response.data.id);
+            });
+          }
+        } else {
+          return false;
+        }
+      });
+    },
+
     saveReview() {
       this.$refs['reviewForm'].validate((valid) => {
         if (valid) {
           let param = {};
           Object.assign(param, this.form);
           param.name = param.name.trim();
+          if (this.form.tags instanceof Array) {
+            this.form.tags = JSON.stringify(this.form.tags);
+          }
+          param.tags = this.form.tags;
           if (param.name === '') {
             this.$warning(this.$t('test_track.plan.input_plan_name'));
             return;
@@ -178,55 +233,22 @@ export default {
             return false;
           }
 
-          if (this.operationType === 'edit') {
-            const nowIds = param.projectIds;
-            let sign = true;
-            this.dbProjectIds.forEach(dbId => {
-              if (nowIds.indexOf(dbId) === -1 && sign) {
-                sign = false;
-                this.$confirm(this.$t('test_track.case.cancel_relevance_project'), this.$t('commons.prompt'), {
-                  confirmButtonText: this.$t('commons.confirm'),
-                  cancelButtonText: this.$t('commons.cancel'),
-                  type: 'warning'
-                }).then(() => {
-                  this.editTestReview(param);
-                }).catch(() => {
-                  this.$info(this.$t('commons.cancel'))
-                });
-              }
+          param.projectId = this.projectId;
+          if (this.projectId) {
+            this.result = this.$post('/test/case/review/' + this.operationType, param, () => {
+              this.$success(this.$t('commons.save_success'));
+              this.dialogFormVisible = false;
+              this.$emit("refresh");
             });
-            if (sign) {
-              this.editTestReview(param);
-            }
-          } else {
-            this.editTestReview(param);
           }
-
 
         } else {
           return false;
         }
       });
     },
-    editTestReview(param) {
-      this.result = this.$post('/test/case/review/' + this.operationType, param, () => {
-        this.$success(this.$t('commons.save_success'));
-        this.dialogFormVisible = false;
-        this.$emit("refresh");
-      });
-    },
-    getProjects() {
-      this.result = this.$get("/project/listAll", (response) => {
-        if (response.success) {
-          this.projects = response.data;
-        } else {
-          this.$warning()(response.message);
-        }
-      });
-    },
     setReviewerOptions() {
-      let workspaceId = localStorage.getItem(WORKSPACE_ID);
-      this.result = this.$post('/user/ws/member/tester/list', {workspaceId: workspaceId}, response => {
+      this.result = this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()},response => {
         this.reviewerOptions = response.data;
       });
     },
@@ -250,6 +272,7 @@ export default {
           this.form.status = null;
           this.form.projectIds = [];
           this.form.userIds = [];
+          this.form.followIds = [];
           return true;
         });
       }

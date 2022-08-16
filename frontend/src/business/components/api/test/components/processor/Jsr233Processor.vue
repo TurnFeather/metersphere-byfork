@@ -67,14 +67,6 @@ export default {
           value: 'vars.put("variable_name", "variable_value")',
         },
         {
-          title: this.$t('api_test.request.processor.code_template_get_global_variable'),
-          value: 'props.get("variable_name")',
-        },
-        {
-          title: this.$t('api_test.request.processor.code_template_set_global_variable'),
-          value: 'props.put("variable_name", "variable_value")',
-        },
-        {
           title: this.$t('api_test.request.processor.code_template_get_response_header'),
           value: 'prev.getResponseHeaders()',
           disabled: this.isPreProcessor
@@ -93,11 +85,13 @@ export default {
       ],
       isCodeEditAlive: true,
       languages: [
-        'beanshell', "python"
+        'beanshell', "python", "groovy", "javascript"
       ],
       codeEditModeMap: {
         beanshell: 'java',
-        python: 'python'
+        python: 'python',
+        groovy: 'java',
+        javascript: 'javascript',
       }
     }
   },
@@ -136,6 +130,7 @@ export default {
 
 .script-index {
   padding: 0 20px;
+  width: 230px;
 }
 
 .template-title {

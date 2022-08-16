@@ -1,5 +1,6 @@
 package io.metersphere.api.jmeter;
 
+import io.metersphere.dto.RequestResult;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ public class ScenarioResult {
 
     private int passAssertions = 0;
 
-    private final List<RequestResult> requestResults = new ArrayList<>();
+    private List<RequestResult> requestResults = new ArrayList<>();
 
     public void addResponseTime(long time) {
         this.responseTime += time;
@@ -42,5 +43,9 @@ public class ScenarioResult {
 
     public void addPassAssertions(int count) {
         this.passAssertions += count;
+    }
+
+    public int getTotal() {
+        return error + success;
     }
 }

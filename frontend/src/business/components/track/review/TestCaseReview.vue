@@ -18,6 +18,7 @@ import TestCaseReviewList from "./components/TestCaseReviewList";
 import TestCaseReviewEdit from "./components/TestCaseReviewEdit";
 import MsMainContainer from "../../common/components/MsMainContainer";
 import MsContainer from "../../common/components/MsContainer";
+import {getCurrentProjectID} from "@/common/js/utils";
 
 export default {
   name: "TestCaseReview",
@@ -32,6 +33,11 @@ export default {
 
     }
   },
+  computed: {
+    projectId() {
+      return getCurrentProjectID();
+    },
+  },
   mounted() {
     if (this.$route.path.indexOf("/track/review/create") >= 0){
       this.openCaseReviewEditDialog();
@@ -41,6 +47,10 @@ export default {
   watch: {
     '$route'(to) {
       if (to.path.indexOf("/track/review/create") >= 0){
+        if (!this.projectId) {
+          this.$warning(this.$t('commons.check_project_tip'));
+          return;
+        }
         this.openCaseReviewEditDialog();
         this.$router.push('/track/review/all');
       }

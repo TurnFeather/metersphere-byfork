@@ -31,7 +31,14 @@
         </el-table-column>
         <el-table-column prop="secretKey" label="Secret Key">
           <template v-slot:default="scope">
-            <el-link type="primary" @click="showSecretKey(scope.row)">{{ $t('commons.show') }}</el-link>
+            <el-link type="primary" @click="showSecretKey(scope)" v-if="!scope.row.apiKeysVisible">{{ $t('commons.show') }}</el-link>
+            <div v-if="scope.row.apiKeysVisible" class="variable-combine">
+              <div class="variable">{{scope.row.secretKey}}</div>
+                <el-tooltip :content="$t('api_test.copied')" manual v-model="scope.row.visible2" placement="top"
+                            :visible-arrow="false">
+                  <i class="el-icon-copy-document copy" @click="copy(scope.row, 'secretKey', 'visible2')"/>
+                </el-tooltip>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="status" :label="$t('commons.status')">
@@ -51,27 +58,20 @@
         </el-table-column>
         <el-table-column :label="$t('commons.operating')">
           <template v-slot:default="scope">
-            <ms-table-operator-button :tip="$t('commons.delete')" icon="el-icon-delete"
-                                      type="danger" @exec="deleteApiKey(scope.row)"/>
+            <div>
+              <ms-table-operator-button :tip="$t('commons.delete')" icon="el-icon-delete"
+                                        type="danger" @exec="deleteApiKey(scope.row)"/>
+            </div>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
-    <el-dialog title="Secret Key" :visible.sync="apiKeysVisible">
-      <div class="variable">
-        {{ currentRow.secretKey }}
-        <el-tooltip :content="$t('api_test.copied')" manual v-model="currentRow.visible2" placement="top"
-                    :visible-arrow="false">
-          <i class="el-icon-copy-document copy" @click="copy(currentRow, 'secretKey', 'visible2')"/>
-        </el-tooltip>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
 <script>
 import MsDialogFooter from "../../common/components/MsDialogFooter";
-import {getCurrentUser} from "../../../../common/js/utils";
+import {getCurrentUser} from "@/common/js/utils";
 import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
 import MsTableHeader from "../../common/components/MsTableHeader";
 
@@ -90,7 +90,7 @@ export default {
     }
   },
 
-  activated() {
+  created() {
     this.search();
   },
 
@@ -100,8 +100,11 @@ export default {
     },
     search() {
       this.result = this.$get("/user/key/info", response => {
+          response.data.forEach((d) => {
+            d.show = false;
+            d.apiKeysVisible = false;
+          })
           this.tableData = response.data;
-          this.tableData.forEach(d => d.show = false);
         }
       )
     },
@@ -140,9 +143,12 @@ export default {
         });
       }
     },
-    showSecretKey(row) {
-      this.apiKeysVisible = true;
-      this.currentRow = row;
+    showSecretKey(scope) {
+      scope.row.apiKeysVisible = true
+      setTimeout(() => {
+        //this.$set(this.tableData[row.$index], "apiKeysVisible", false);
+        scope.row.apiKeysVisible = false
+      }, 5000);
     },
     copy(row, key, visible) {
       let input = document.createElement("input");

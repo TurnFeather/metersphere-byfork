@@ -2,33 +2,37 @@ package io.metersphere.performance.base;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 public class Statistics {
 
     private String label;
 
-    private String samples;
+    private BigDecimal samples;
 
-    private String ko;
+    private BigDecimal fail;
 
-    private String error;
+    private BigDecimal error;
 
-    private String average;
+    private BigDecimal average;
 
-    private String min;
+    private BigDecimal min;
 
-    private String max;
+    private BigDecimal max;
 
-    private String tp90;
+    private BigDecimal median;
 
-    private String tp95;
+    private BigDecimal tp90;
 
-    private String tp99;
+    private BigDecimal tp95;
 
-    private String transactions;
+    private BigDecimal tp99;
 
-    private String received;
+    private BigDecimal transactions;
 
-    private String sent;
+    private BigDecimal received;
+
+    private BigDecimal sent;
 
 }

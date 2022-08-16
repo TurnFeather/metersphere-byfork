@@ -1,11 +1,13 @@
 package io.metersphere.api.dto.definition.request.dns;
 
 import com.alibaba.fastjson.annotation.JSONType;
-import io.metersphere.api.dto.definition.request.MsTestElement;
 import io.metersphere.api.dto.definition.request.ParameterConfig;
+import io.metersphere.api.dto.scenario.HttpConfig;
 import io.metersphere.api.dto.scenario.KeyValue;
 import io.metersphere.api.dto.scenario.environment.EnvironmentConfig;
 import io.metersphere.api.dto.scenario.environment.Host;
+import io.metersphere.plugin.core.MsParameter;
+import io.metersphere.plugin.core.MsTestElement;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.commons.collections.CollectionUtils;
@@ -23,9 +25,13 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @JSONType(typeName = "DNSCacheManager")
 public class MsDNSCacheManager extends MsTestElement {
+    private String clazzName = MsDNSCacheManager.class.getCanonicalName();
 
-    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, ParameterConfig config) {
-        if (!this.isEnable()) {
+    @Override
+    public void toHashTree(HashTree tree, List<MsTestElement> hashTree, MsParameter msParameter) {
+        ParameterConfig config = (ParameterConfig) msParameter;
+        // 非导出操作，且不是启用状态则跳过执行
+        if (!config.isOperating() && !this.isEnable()) {
             return;
         }
         for (MsTestElement el : hashTree) {
@@ -35,12 +41,14 @@ public class MsDNSCacheManager extends MsTestElement {
 
     public static void addEnvironmentVariables(HashTree samplerHashTree, String name, EnvironmentConfig config) {
         name += "Environment Variables";
-        samplerHashTree.add(arguments(name, config.getCommonConfig().getVariables()));
+        if (CollectionUtils.isNotEmpty(config.getCommonConfig().getVariables())) {
+            samplerHashTree.add(arguments(name, config.getCommonConfig().getVariables()));
+        }
     }
 
-    public static void addEnvironmentDNS(HashTree samplerHashTree, String name, EnvironmentConfig config) {
-        if (config.getCommonConfig().isEnableHost() && CollectionUtils.isNotEmpty(config.getCommonConfig().getHosts())) {
-            String domain = config.getHttpConfig().getDomain().trim();
+    public static void addEnvironmentDNS(HashTree samplerHashTree, String name, EnvironmentConfig config, HttpConfig httpConfig) {
+        if (config.getCommonConfig().isEnableHost() && CollectionUtils.isNotEmpty(config.getCommonConfig().getHosts()) && httpConfig != null && httpConfig.getDomain() != null) {
+            String domain = httpConfig.getDomain().trim();
             List<Host> hosts = new ArrayList<>();
             config.getCommonConfig().getHosts().forEach(host -> {
                 if (StringUtils.isNotBlank(host.getDomain())) {
@@ -51,7 +59,9 @@ public class MsDNSCacheManager extends MsTestElement {
                     }
                 }
             });
-            samplerHashTree.add(dnsCacheManager(name + " DNSCacheManager", hosts));
+            if (CollectionUtils.isNotEmpty(hosts)) {
+                samplerHashTree.add(dnsCacheManager(name + " DNSCacheManager", hosts));
+            }
         }
     }
 
@@ -75,6 +85,7 @@ public class MsDNSCacheManager extends MsTestElement {
         dnsCacheManager.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("DNSCachePanel"));
         dnsCacheManager.setCustomResolver(true);
         hosts.forEach(host -> dnsCacheManager.addHost(host.getDomain(), host.getIp()));
+        hosts.forEach(host -> dnsCacheManager.addServer(host.getIp()));
 
         return dnsCacheManager;
     }

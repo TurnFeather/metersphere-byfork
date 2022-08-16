@@ -1,11 +1,24 @@
 <template>
   <el-card class="table-card" v-loading="result.loading">
     <template v-slot:header>
-      <ms-table-header :is-tester-permission="true" :condition.sync="condition"
-                       @search="initTableData" :showCreate="false"
-                       :title="$t('test_track.plan.test_plan')"/>
+      <ms-table-header :condition.sync="condition"
+                       @search="initTableData"
+                       :title="$t('test_track.plan.test_plan')"
+                       @create="testPlanCreate"
+                       :create-tip="$t('test_track.plan.create_plan')"
+      >
+      </ms-table-header>
     </template>
-
+    <env-popover :env-map="projectEnvMap"
+                 :project-ids="projectIds"
+                 @setProjectEnvMap="setProjectEnvMap"
+                 :environment-type.sync="environmentType"
+                 :group-id="envGroupId"
+                 :project-list="projectList"
+                 :is-scenario="false"
+                 @setEnvGroup="setEnvGroup"
+                 ref="envPopover"
+                 class="env-popover" style="float: right; margin-top: 4px;"/>
     <el-table
       border
       class="adjust-table"
@@ -62,7 +75,7 @@
         :label="$t('test_track.plan.plan_stage')"
         show-overflow-tooltip>
         <template v-slot:default="scope">
-          <plan-stage-table-item :stage="scope.row.stage"/>
+          <plan-stage-table-item :option="stageOption" :stage="scope.row.stage"/>
         </template>
       </el-table-column>
       <el-table-column
@@ -115,9 +128,8 @@
           <span>{{ scope.row.actualEndTime | timestampFormatDate }}</span>
         </template>
       </el-table-column>
-
     </el-table>
-
+    <test-plan-edit ref="testPlanEditDialog" @refresh="initTableData"></test-plan-edit>
     <ms-table-pagination :change="initTableData" :current-page.sync="currentPage" :page-size.sync="pageSize"
                          :total="total"/>
 
@@ -128,40 +140,49 @@
     </ms-delete-confirm>
 
     <ms-dialog-footer style="float: right;margin: 20px"
-                      @confirm="confirm">
+                      @confirm="confirm" @cancel="cancel">
     </ms-dialog-footer>
 
   </el-card>
 </template>
 
 <script>
-  import MsCreateBox from '../../../../settings/CreateBox';
-  import MsTablePagination from '../../../../../components/common/pagination/TablePagination';
-  import MsTableHeader from "../../../../common/components/MsTableHeader";
-  import MsDialogFooter from "../../../../common/components/MsDialogFooter";
-  import MsTableOperatorButton from "../../../../common/components/MsTableOperatorButton";
-  import MsTableOperator from "../../../../common/components/MsTableOperator";
-  import PlanStatusTableItem from "../../../../track/common/tableItems/plan/PlanStatusTableItem";
-  import PlanStageTableItem from "../../../../track/common/tableItems/plan/PlanStageTableItem";
-  import {_filter, _sort, checkoutTestManagerOrTestUser} from "@/common/js/utils";
-  import TestReportTemplateList from "../../../../track/plan/view/comonents/TestReportTemplateList";
-  import TestCaseReportView from "../../../../track/plan/view/comonents/report/TestCaseReportView";
-  import MsDeleteConfirm from "../../../../common/components/MsDeleteConfirm";
-  import {TEST_PLAN_CONFIGS} from "../../../../common/components/search/search-components";
-  import {LIST_CHANGE, TrackEvent} from "@/business/components/common/head/ListEvent";
+import MsTablePagination from '../../../../../components/common/pagination/TablePagination';
+import MsTableHeader from "../../../../common/components/MsTableHeader";
+import MsDialogFooter from "../../../../common/components/MsDialogFooter";
+import MsTableOperatorButton from "../../../../common/components/MsTableOperatorButton";
+import MsTableOperator from "../../../../common/components/MsTableOperator";
+import PlanStatusTableItem from "../../../../track/common/tableItems/plan/PlanStatusTableItem";
+import PlanStageTableItem from "../../../../track/common/tableItems/plan/PlanStageTableItem";
+import TestReportTemplateList from "../../../../track/plan/view/comonents/TestReportTemplateList";
+import TestCaseReportView from "../../../../track/plan/view/comonents/report/TestCaseReportView";
+import MsDeleteConfirm from "../../../../common/components/MsDeleteConfirm";
+import {TEST_PLAN_CONFIGS} from "../../../../common/components/search/search-components";
+import {getCurrentProjectID} from "../../../../../../common/js/utils";
+import {_filter, _sort} from "@/common/js/tableUtils";
+import EnvPopover from "@/business/components/api/automation/scenario/EnvPopover";
+import TestPlanEdit from "@/business/components/track/plan/components/TestPlanEdit";
+import {ENV_TYPE} from "@/common/js/constants";
+import {getPlanStageOption} from "@/network/test-plan";
 
-  export default {
-    name: "TestPlanList",
-    components: {
-      MsDeleteConfirm,
-      TestCaseReportView,
-      TestReportTemplateList,
-      PlanStageTableItem,
-      PlanStatusTableItem,
-      MsTableOperator, MsTableOperatorButton, MsDialogFooter, MsTableHeader, MsCreateBox, MsTablePagination
-    },
-    data() {
+export default {
+  name: "TestPlanList",
+  components: {
+    TestPlanEdit,
+    MsDeleteConfirm,
+    TestCaseReportView,
+    TestReportTemplateList,
+    PlanStageTableItem,
+    PlanStatusTableItem,
+    MsTableOperator, MsTableOperatorButton, MsDialogFooter, MsTableHeader, MsTablePagination, EnvPopover
+  },
+  props: {
+    row: Set,
+    scenarioCondition: {},
+  },
+  data() {
       return {
+        dialogVisible: false,
         result: {},
         selection: [],
         enableDeleteTip: false,
@@ -185,6 +206,13 @@
           {text: this.$t('test_track.plan.system_test'), value: 'system'},
           {text: this.$t('test_track.plan.regression_test'), value: 'regression'},
         ],
+        projectEnvMap: new Map(),
+        projectList: [],
+        projectIds: new Set(),
+        map: new Map(),
+        environmentType: ENV_TYPE.JSON,
+        envGroupId: "",
+        stageOption: []
       }
     },
     watch: {
@@ -196,19 +224,73 @@
     },
     created() {
       this.projectId = this.$route.params.projectId;
-      this.isTestManagerOrTestUser = checkoutTestManagerOrTestUser();
+      this.isTestManagerOrTestUser = true;
+      getPlanStageOption((data) => {
+        this.stageOption = data;
+      });
       this.initTableData();
+      this.setScenarioSelectRows(this.row);
+      this.getWsProjects();
     },
     methods: {
       confirm() {
         if (this.selection.length==0) {
           this.$warning(this.$t("api_test.definition.request.test_plan_select"));
+        }else{
+          const sign = this.checkEnv();
+          if (!sign) {
+            return false;
+          }
+          if (this.environmentType === ENV_TYPE.JSON && (!this.projectEnvMap || this.projectEnvMap.size < 1)) {
+            this.$warning(this.$t("api_test.environment.select_environment"));
+            return false;
+          } else if (this.environmentType === ENV_TYPE.GROUP && !this.envGroupId) {
+            this.$warning(this.$t("api_test.environment.select_environment"));
+            return false;
+          }
+          this.$emit('addTestPlan', this.selection, this.projectEnvMap, this.map, this.environmentType, this.envGroupId);
         }
-        this.$emit('addTestPlan', this.selection);
+      },
+      cancel(){
+        this.$emit('cancel');
+      },
+      setProjectEnvMap(projectEnvMap) {
+        this.projectEnvMap = projectEnvMap;
+      },
+      setEnvGroup(id) {
+        this.envGroupId = id;
       },
       select(selection) {
         this.selection = selection.map(s => s.id);
         this.$emit('selection', selection);
+      },
+      setScenarioSelectRows(rows) {
+        this.projectIds.clear();
+        this.map.clear();
+        if (this.scenarioCondition != null) {
+          let params = {};
+          params.ids = [];
+          rows.forEach(row => {
+            params.ids.push(row.id);
+          });
+          params.condition = this.scenarioCondition;
+
+          this.$post('/api/automation/getApiScenarioProjectIdByConditions', params, res => {
+            let data = res.data;
+            data.forEach(scenario => {
+              scenario.projectIds.forEach(d => this.projectIds.add(d));
+              this.map.set(scenario.id, scenario.projectIds);
+            });
+          });
+        } else {
+          rows.forEach(row => {
+            this.result = this.$get('/api/automation/getApiScenarioProjectId/' + row.id, res => {
+              let data = res.data;
+              data.projectIds.forEach(d => this.projectIds.add(d));
+              this.map.set(row.id, data.projectIds);
+            });
+          });
+        }
       },
       initTableData() {
         if (this.planId) {
@@ -217,27 +299,22 @@
         if (this.selectNodeIds && this.selectNodeIds.length > 0) {
           this.condition.nodeIds = this.selectNodeIds;
         }
+        if (!getCurrentProjectID()) {
+          this.$warning(this.$t('commons.check_project_tip'));
+          return;
+        }
+        this.condition.projectId = getCurrentProjectID();
         this.result = this.$post(this.buildPagePath(this.queryPath), this.condition, response => {
           let data = response.data;
           this.total = data.itemCount;
           this.tableData = data.listObject;
-          for (let i = 0; i < this.tableData.length; i++) {
-            let path = "/test/plan/project";
-            this.$post(path, {planId: this.tableData[i].id}, res => {
-              let arr = res.data;
-              let projectName = arr.map(data => data.name).join("、");
-              let projectIds = arr.map(data => data.id);
-              this.$set(this.tableData[i], "projectName", projectName);
-              this.$set(this.tableData[i], "projectIds", projectIds);
-            })
-          }
         });
       },
       buildPagePath(path) {
         return path + "/" + this.currentPage + "/" + this.pageSize;
       },
       testPlanCreate() {
-        this.$emit('openTestPlanEditDialog');
+        this.$refs.testPlanEditDialog.openTestPlanEditDialog();
       },
       handleEdit(testPlan) {
         this.$emit('testPlanEdit', testPlan);
@@ -261,8 +338,6 @@
         this.$post('/test/plan/delete/' + testPlanId, {}, () => {
           this.initTableData();
           this.$success(this.$t('commons.delete_success'));
-          // 发送广播，刷新 head 上的最新列表
-          TrackEvent.$emit(LIST_CHANGE);
         });
       },
       intoPlan(row, event, column) {
@@ -283,6 +358,14 @@
         if (reportId) {
           this.$refs.testCaseReportView.open(planId, reportId);
         }
+      },
+      checkEnv() {
+        return this.$refs.envPopover.checkEnv();
+      },
+      getWsProjects() {
+        this.$get("/project/getOwnerProjects", res => {
+          this.projectList = res.data;
+        })
       },
     }
   }

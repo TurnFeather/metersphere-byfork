@@ -1,7 +1,7 @@
 <template>
   <el-row type="flex" justify="start" :gutter="20" class="status-button">
     <el-col>
-      <el-button :disabled="isReadOnly || isFailure" type="success" round size="mini"
+      <el-button :disabled="isReadOnly" type="success" round size="mini"
                  :icon="status == 'Pass' ? 'el-icon-check' : ''"
                  @click="setStatus('Pass')"> {{$t('test_track.plan_view.pass')}}
       </el-button>
@@ -37,14 +37,13 @@
       isReadOnly: {
         type: Boolean,
         default: false
-      },
-      isFailure: {
-        type: Boolean,
-        default: false
       }
     },
     methods: {
       setStatus(status) {
+        if (this.isReadOnly) {
+          return;
+        }
         this.$emit('statusChange', status);
       }
     }
@@ -52,8 +51,4 @@
 </script>
 
 <style scoped>
-  .el-row {
-    width: 50%;
-  }
-
 </style>

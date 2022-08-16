@@ -6,14 +6,11 @@ import io.metersphere.api.dto.APIReportResult;
 import io.metersphere.api.dto.DeleteAPIReportRequest;
 import io.metersphere.api.dto.QueryAPIReportRequest;
 import io.metersphere.api.service.APIReportService;
-import io.metersphere.commons.constants.RoleConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.dto.DashboardTestDTO;
-import io.metersphere.service.CheckOwnerService;
-import org.apache.shiro.authz.annotation.Logical;
-import org.apache.shiro.authz.annotation.RequiresRoles;
+import io.metersphere.service.CheckPermissionService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -21,13 +18,12 @@ import java.util.List;
 
 @RestController
 @RequestMapping(value = "/api/report")
-@RequiresRoles(value = {RoleConstants.TEST_MANAGER, RoleConstants.TEST_USER, RoleConstants.TEST_VIEWER}, logical = Logical.OR)
 public class APIReportController {
 
     @Resource
     private APIReportService apiReportService;
     @Resource
-    private CheckOwnerService checkOwnerService;
+    private CheckPermissionService checkPermissionService;
 
     @GetMapping("recent/{count}")
     public List<APIReportResult> recentTest(@PathVariable int count) {
@@ -41,7 +37,7 @@ public class APIReportController {
 
     @GetMapping("/list/{testId}/{goPage}/{pageSize}")
     public Pager<List<APIReportResult>> listByTestId(@PathVariable String testId, @PathVariable int goPage, @PathVariable int pageSize) {
-        checkOwnerService.checkApiTestOwner(testId);
+        checkPermissionService.checkApiTestOwner(testId);
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
         return PageUtils.setPageInfo(page, apiReportService.listByTestId(testId));
 
@@ -50,7 +46,6 @@ public class APIReportController {
     @PostMapping("/list/{goPage}/{pageSize}")
     public Pager<List<APIReportResult>> list(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryAPIReportRequest request) {
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
-        request.setWorkspaceId(SessionUtils.getCurrentWorkspaceId());
         return PageUtils.setPageInfo(page, apiReportService.list(request));
     }
 

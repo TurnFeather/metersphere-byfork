@@ -2,6 +2,7 @@ package io.metersphere.config;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = KafkaProperties.KAFKA_PREFIX)
@@ -10,7 +11,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class KafkaProperties {
     public static final String KAFKA_PREFIX = "kafka";
 
-    private String acks = "all";
+    private String acks = "1"; // 不要设置all
+    private String expectedDelayEndTime = "30000"; // 30s
     private String topic;
     private String fields;
     private String timestamp;
@@ -23,9 +25,13 @@ public class KafkaProperties {
     private String batchSize;
     private String clientId;
     private String connectionsMaxIdleMs;
+    private String queueSize = "20000"; // backend listener queue size
     private KafkaProperties.Ssl ssl = new KafkaProperties.Ssl();
     private KafkaProperties.Log log = new KafkaProperties.Log();
+    private KafkaProperties.Report report = new KafkaProperties.Report();
 
+    @Value("${spring.kafka.producer.properties.max.request.size}")
+    private String maxRequestSize;
     @Getter
     @Setter
     public static class Ssl {
@@ -45,6 +51,12 @@ public class KafkaProperties {
     @Getter
     @Setter
     public static class Log {
+        private String topic;
+    }
+
+    @Getter
+    @Setter
+    public static class Report {
         private String topic;
     }
 }

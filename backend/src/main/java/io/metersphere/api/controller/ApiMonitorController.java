@@ -1,12 +1,10 @@
 package io.metersphere.api.controller;
 
+import io.metersphere.api.dto.ApiMonitorRequest;
 import io.metersphere.api.dto.ApiMonitorSearch;
 import io.metersphere.api.dto.ApiResponseCodeMonitor;
 import io.metersphere.api.dto.ApiResponseTimeMonitor;
 import io.metersphere.api.service.APIMonitorService;
-import io.metersphere.commons.constants.RoleConstants;
-import org.apache.shiro.authz.annotation.Logical;
-import org.apache.shiro.authz.annotation.RequiresRoles;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -14,7 +12,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping(value = "/api/monitor")
-@RequiresRoles(value = {RoleConstants.TEST_MANAGER, RoleConstants.TEST_USER, RoleConstants.TEST_VIEWER}, logical = Logical.OR)
 public class ApiMonitorController {
 
     @Resource
@@ -32,24 +29,24 @@ public class ApiMonitorController {
     /**
      * 查询响应时间
      */
-    @GetMapping("/getResponseTime")
-    public List<ApiResponseTimeMonitor> responseTimeData(@RequestHeader("apiUrl") String url, String startTime, String endTime) {
-        return apiMonitorService.getApiResponseTimeData(url, startTime, endTime);
+    @PostMapping("/getResponseTime")
+    public List<ApiResponseTimeMonitor> responseTimeData(@RequestBody ApiMonitorRequest request) {
+        return apiMonitorService.getApiResponseTimeData(request.getUrl(), request.getStartTime(), request.getEndTime());
     }
 
     /**
      * 查询状态码
      */
-    @GetMapping("/getResponseCode")
-    public List<ApiResponseCodeMonitor> responseCodeData(@RequestHeader("apiUrl") String url, String startTime, String endTime) {
-        return apiMonitorService.getApiResponseCodeData(url, startTime, endTime);
+    @PostMapping("/getResponseCode")
+    public List<ApiResponseCodeMonitor> responseCodeData(@RequestBody ApiMonitorRequest request) {
+        return apiMonitorService.getApiResponseCodeData(request.getUrl(), request.getStartTime(), request.getEndTime());
     }
 
     /**
      * 查询reportId
      */
-    @GetMapping("/getReportId")
-    public String searchReportId(@RequestHeader("apiUrl") String url, @RequestParam("startTime") String startTime) {
-        return apiMonitorService.getReportId(url, startTime);
+    @PostMapping("/getReportId")
+    public String searchReportId(@RequestBody ApiMonitorRequest request) {
+        return apiMonitorService.getReportId(request.getUrl(), request.getStartTime());
     }
 }

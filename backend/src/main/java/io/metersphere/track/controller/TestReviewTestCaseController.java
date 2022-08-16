@@ -3,16 +3,17 @@ package io.metersphere.track.controller;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.base.domain.TestCaseReviewTestCase;
-import io.metersphere.commons.constants.RoleConstants;
+import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
+import io.metersphere.controller.request.ResetOrderRequest;
+import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.track.dto.TestReviewCaseDTO;
 import io.metersphere.track.request.testplancase.TestReviewCaseBatchRequest;
 import io.metersphere.track.request.testreview.DeleteRelevanceRequest;
 import io.metersphere.track.request.testreview.QueryCaseReviewRequest;
 import io.metersphere.track.service.TestReviewTestCaseService;
-import org.apache.shiro.authz.annotation.Logical;
-import org.apache.shiro.authz.annotation.RequiresRoles;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -32,38 +33,48 @@ public class TestReviewTestCaseController {
     }
 
     @PostMapping("/delete")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#request)", msClass = TestReviewTestCaseService.class)
     public int deleteTestCase(@RequestBody DeleteRelevanceRequest request) {
         return testReviewTestCaseService.deleteTestCase(request);
     }
 
     @PostMapping("/batch/delete")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
-    public void deleteTestCaseBath(@RequestBody TestReviewCaseBatchRequest request) {
-        testReviewTestCaseService.deleteTestCaseBath(request);
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#request)", msClass = TestReviewTestCaseService.class)
+    public void deleteTestCaseBatch(@RequestBody TestReviewCaseBatchRequest request) {
+        testReviewTestCaseService.deleteTestCaseBatch(request);
     }
 
-    @PostMapping("/list/all")
-    public List<TestReviewCaseDTO> getTestReviewCases(@RequestBody QueryCaseReviewRequest request) {
-        return testReviewTestCaseService.list(request);
+    @PostMapping("/batch/edit/status")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.batchLogDetails(#request)", content = "#msClass.getLogDetails(#request)", msClass = TestReviewTestCaseService.class)
+    public void editTestCaseBatch(@RequestBody TestReviewCaseBatchRequest request) {
+        testReviewTestCaseService.editTestCaseBatchStatus(request);
+    }
+
+    @PostMapping("/minder/edit/{reviewId}")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.ASSOCIATE_CASE, content = "#msClass.getLogDetails(#testCases)", msClass = TestReviewTestCaseService.class)
+    public void editTestCaseForMinder(@PathVariable("reviewId") String reviewId, @RequestBody List<TestCaseReviewTestCase> testCases) {
+        testReviewTestCaseService.editTestCaseForMinder(reviewId, testCases);
+    }
+
+    @PostMapping("/list/minder")
+    public List<TestReviewCaseDTO> listForMinder(@RequestBody QueryCaseReviewRequest request) {
+        return testReviewTestCaseService.listForMinder(request);
     }
 
     @PostMapping("/edit")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.REVIEW, content = "#msClass.getLogDetails(#testCaseReviewTestCase)", msClass = TestReviewTestCaseService.class)
     public void editTestCase(@RequestBody TestCaseReviewTestCase testCaseReviewTestCase) {
         testReviewTestCaseService.editTestCase(testCaseReviewTestCase);
     }
 
     @GetMapping("/get/{reviewId}")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER, RoleConstants.TEST_VIEWER}, logical = Logical.OR)
     public TestReviewCaseDTO get(@PathVariable String reviewId) {
         return testReviewTestCaseService.get(reviewId);
     }
 
-    @PostMapping("/list/ids")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER, RoleConstants.TEST_VIEWER}, logical = Logical.OR)
-    public List<TestReviewCaseDTO> getTestReviewCaseList(@RequestBody QueryCaseReviewRequest request) {
-        return testReviewTestCaseService.getTestCaseReviewDTOList(request);
+    @PostMapping("/edit/order")
+    public void orderCase(@RequestBody ResetOrderRequest request) {
+        testReviewTestCaseService.updateOrder(request);
     }
 
 }

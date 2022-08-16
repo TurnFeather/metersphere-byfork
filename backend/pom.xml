@@ -7,7 +7,7 @@
     <parent>
         <artifactId>metersphere-server</artifactId>
         <groupId>io.metersphere</groupId>
-        <version>1.5</version>
+        <version>1.16</version>
     </parent>
 
     <modelVersion>4.0.0</modelVersion>
@@ -15,12 +15,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <shiro.version>1.6.0</shiro.version>
+        <shiro.version>1.8.0</shiro.version>
         <java.version>1.8</java.version>
-        <jmeter.version>5.2.1</jmeter.version>
-        <nacos.version>1.1.3</nacos.version>
-        <dubbo.version>2.7.8</dubbo.version>
-        <graalvm.version>20.1.0</graalvm.version>
+        <flyway.version>7.15.0</flyway.version>
     </properties>
 
     <dependencies>
@@ -62,13 +59,16 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jetty</artifactId>
+            <artifactId>spring-boot-starter-undertow</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
-
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -77,12 +77,17 @@
         <dependency>
             <groupId>org.mybatis.spring.boot</groupId>
             <artifactId>mybatis-spring-boot-starter</artifactId>
-            <version>2.1.2</version>
+            <version>2.2.0</version>
         </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
         <!-- flyway -->
@@ -98,7 +103,7 @@
         <dependency>
             <groupId>com.github.pagehelper</groupId>
             <artifactId>pagehelper</artifactId>
-            <version>5.0.3</version>
+            <version>5.3.0</version>
         </dependency>
 
         <dependency>
@@ -106,15 +111,18 @@
             <artifactId>shiro-spring-boot-starter</artifactId>
             <version>${shiro.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-collections4</artifactId>
-            <version>4.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -136,126 +144,54 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-ui</artifactId>
-            <version>1.2.32</version>
+            <version>1.6.3</version>
         </dependency>
 
-        <!-- jmeter -->
-
+        <!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-rsocket -->
         <dependency>
-            <groupId>org.apache.jmeter</groupId>
-            <artifactId>ApacheJMeter_http</artifactId>
-            <version>${jmeter.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.logging.log4j</groupId>
-                    <artifactId>log4j-slf4j-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>org.python</groupId>
-            <artifactId>jython-standalone</artifactId>
-            <version>2.7.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.jmeter</groupId>
-            <artifactId>ApacheJMeter_functions</artifactId>
-            <version>${jmeter.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.jmeter</groupId>
-            <artifactId>ApacheJMeter_jdbc</artifactId>
-            <version>${jmeter.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.jmeter</groupId>
-            <artifactId>ApacheJMeter_tcp</artifactId>
-            <version>${jmeter.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.jmeter</groupId>
-            <artifactId>ApacheJMeter_java</artifactId>
-            <version>${jmeter.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
-            <version>7.4.1.jre8</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>42.2.14</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.oracle.database.jdbc</groupId>
-            <artifactId>ojdbc8</artifactId>
-            <version>19.7.0.0</version>
-        </dependency>
-
-        <!-- Zookeeper -->
-        <dependency>
-            <groupId>org.apache.dubbo</groupId>
-            <artifactId>dubbo</artifactId>
-            <version>${dubbo.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.zookeeper</groupId>
-            <artifactId>zookeeper</artifactId>
-            <version>3.4.13</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.curator</groupId>
-            <artifactId>curator-framework</artifactId>
-            <version>4.0.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.curator</groupId>
-            <artifactId>curator-recipes</artifactId>
-            <version>4.0.1</version>
-        </dependency>
-
-        <!-- nacos -->
-        <dependency>
-            <groupId>org.apache.dubbo</groupId>
-            <artifactId>dubbo-registry-nacos</artifactId>
-            <version>${dubbo.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.nacos</groupId>
-            <artifactId>nacos-api</artifactId>
-            <version>${nacos.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.nacos</groupId>
-            <artifactId>nacos-client</artifactId>
-            <version>${nacos.version}</version>
-        </dependency>
-        <!-- easyexcel -->
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>easyexcel</artifactId>
-            <version>2.1.7</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.fit2cloud</groupId>
-            <artifactId>quartz-spring-boot-starter</artifactId>
-            <version>0.0.7</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-rsocket</artifactId>
         </dependency>
 
         <dependency>
             <groupId>io.metersphere</groupId>
-            <artifactId>jmeter-plugins-dubbo</artifactId>
-            <version>2.7.12</version>
+            <artifactId>ms-jmeter-core</artifactId>
+            <version>1.1.3</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>netty</artifactId>
+                    <groupId>io.netty</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
+
+        <!--   排除jmeter中的 xstream 解决bug     -->
+        <dependency>
+            <groupId>com.thoughtworks.xstream</groupId>
+            <artifactId>xstream</artifactId>
+            <version>1.4.19</version>
+        </dependency>
+
+        <!-- easyexcel -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>2.2.10</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.xmlbeans</groupId>
+            <artifactId>xmlbeans</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
+
+        <dependency>
+            <groupId>com.fit2cloud</groupId>
+            <artifactId>quartz-spring-boot-starter</artifactId>
+            <version>0.0.9</version>
+        </dependency>
+
 
         <!-- LDAP Module -->
         <dependency>
@@ -263,74 +199,25 @@
             <artifactId>spring-boot-starter-data-ldap</artifactId>
         </dependency>
 
-        <!-- swagger2 解析 -->
+        <!-- swagger 解析 -->
         <dependency>
-            <groupId>io.swagger</groupId>
+            <groupId>io.swagger.parser.v3</groupId>
             <artifactId>swagger-parser</artifactId>
-            <version>1.0.51</version>
+            <version>2.0.24</version>
         </dependency>
 
-        <!-- swagger3 解析 -->
-        <!--<dependency>-->
-            <!--<groupId>io.swagger.parser.v3</groupId>-->
-            <!--<artifactId>swagger-parser</artifactId>-->
-            <!--<version>2.0.24</version>-->
-        <!--</dependency>-->
 
         <!-- 执行 js 代码依赖 -->
         <dependency>
-            <groupId>org.graalvm.sdk</groupId>
-            <artifactId>graal-sdk</artifactId>
-            <version>${graalvm.version}</version>
-            <scope>compile</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.graalvm.js</groupId>
-            <artifactId>js</artifactId>
-            <version>${graalvm.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.graalvm.js</groupId>
-            <artifactId>js-scriptengine</artifactId>
-            <version>${graalvm.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.graalvm.tools</groupId>
-            <artifactId>profiler</artifactId>
-            <version>${graalvm.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.graalvm.tools</groupId>
-            <artifactId>chromeinspector</artifactId>
-            <version>${graalvm.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!--  buji-pac4j  -->
-        <dependency>
-            <groupId>org.pac4j</groupId>
-            <artifactId>pac4j-cas</artifactId>
-            <version>3.0.2</version>
-        </dependency>
-        <dependency>
-            <groupId>io.buji</groupId>
-            <artifactId>buji-pac4j</artifactId>
-            <version>4.0.0</version>
-            <exclusions>
-                <exclusion>
-                    <artifactId>shiro-web</artifactId>
-                    <groupId>org.apache.shiro</groupId>
-                </exclusion>
-            </exclusions>
+            <groupId>org.mozilla</groupId>
+            <artifactId>rhino-engine</artifactId>
+            <version>1.7.13</version>
         </dependency>
 
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.10.3</version>
+            <version>1.14.2</version>
         </dependency>
 
         <dependency>
@@ -342,7 +229,7 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-compress</artifactId>
-            <version>1.20</version>
+            <version>1.21</version>
         </dependency>
 
         <dependency>
@@ -356,22 +243,89 @@
             <artifactId>jaxen</artifactId>
             <version>1.2.0</version>
         </dependency>
+        <dependency>
+            <groupId>net.sourceforge.htmlcleaner</groupId>
+            <artifactId>htmlcleaner</artifactId>
+            <version>2.24</version>
+        </dependency>
 
-        <dependency>
-            <groupId>org.json</groupId>
-            <artifactId>json</artifactId>
-            <version>20171018</version>
-        </dependency>
-        <!--钉钉sdk-->
-        <dependency>
-            <groupId>com.aliyun</groupId>
-            <artifactId>alibaba-dingtalk-service-sdk</artifactId>
-            <version>1.0.1</version>
-        </dependency>
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.5.6</version>
+        </dependency>
+        <!-- 反射工具包 -->
+        <dependency>
+            <groupId>net.oneandone.reflections8</groupId>
+            <artifactId>reflections8</artifactId>
+            <version>0.11.7</version>
+        </dependency>
+        <!-- k8s client -->
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-client</artifactId>
+            <version>4.13.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.5.0</version>
+        </dependency>
+        <!-- xmind export-->
+        <dependency>
+            <groupId>com.github.eljah</groupId>
+            <artifactId>xmindjbehaveplugin</artifactId>
+            <version>0.8</version>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.plexus</groupId>
+            <artifactId>plexus-utils</artifactId>
+            <version>3.0.24</version>
+        </dependency>
+        <!-- selenium包  -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-java</artifactId>
+        </dependency>
+        <!-- 基础包 -->
+        <dependency>
+            <groupId>io.metersphere</groupId>
+            <artifactId>metersphere-plugin-core</artifactId>
+            <version>1.0.1</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>log4j-slf4j-impl</artifactId>
+                    <groupId>org.apache.logging.log4j</groupId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>ApacheJMeter_core</artifactId>
+                    <groupId>org.apache.jmeter</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!--随机数据生成API-->
+        <dependency>
+            <groupId>com.apifan.common</groupId>
+            <artifactId>common-random</artifactId>
+            <version>1.0.7</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.mifmif</groupId>
+            <artifactId>generex</artifactId>
+            <version>1.0.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.sf.json-lib</groupId>
+            <artifactId>json-lib</artifactId>
+            <version>2.4</version>
+            <classifier>jdk15</classifier>
+        </dependency>
+
+        <dependency>
+            <artifactId>guava</artifactId>
+            <groupId>com.google.guava</groupId>
+            <version>31.0.1-jre</version>
         </dependency>
     </dependencies>
 
@@ -432,7 +386,7 @@
                             <followSymlinks>false</followSymlinks>
                         </fileset>
                         <fileset>
-                            <directory>src/main/resources/templates</directory>
+                            <directory>src/main/resources/public</directory>
                             <includes>
                                 <include>**</include>
                             </includes>
@@ -459,16 +413,6 @@
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>**/jmeter/lib/**/*.jar</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
                     <execution>
@@ -481,11 +425,16 @@
                                         <exclude name="*.html"/>
                                     </fileset>
                                 </move>
-                                <move todir="src/main/resources/templates">
+                                <move todir="src/main/resources/public">
                                     <fileset dir="../frontend/dist">
                                         <include name="*.html"/>
                                     </fileset>
                                 </move>
+                                <copy todir="src/main/resources/static/css">
+                                    <fileset dir="../frontend/src/assets/theme">
+                                        <include name="index.css"/>
+                                    </fileset>
+                                </copy>
                             </target>
                         </configuration>
                         <goals>
@@ -511,16 +460,25 @@
                         <artifactItem>
                             <groupId>org.apache.jmeter</groupId>
                             <artifactId>ApacheJMeter_functions</artifactId>
-                            <version>${jmeter.version}</version>
+                            <version>5.4.3</version>
                             <type>jar</type>
                             <overWrite>true</overWrite>
                             <outputDirectory>src/main/resources/jmeter/lib/ext</outputDirectory>
                             <destFileName>ApacheJMeter_functions.jar</destFileName>
                         </artifactItem>
                         <artifactItem>
+                            <groupId>io.metersphere</groupId>
+                            <artifactId>metersphere-jmeter-functions</artifactId>
+                            <version>1.4</version>
+                            <type>jar</type>
+                            <overWrite>true</overWrite>
+                            <outputDirectory>src/main/resources/jmeter/lib/ext</outputDirectory>
+                            <destFileName>metersphere-jmeter-functions.jar</destFileName>
+                        </artifactItem>
+                        <artifactItem>
                             <groupId>org.python</groupId>
                             <artifactId>jython-standalone</artifactId>
-                            <version>2.7.0</version>
+                            <version>2.7.2</version>
                             <type>jar</type>
                             <overWrite>true</overWrite>
                             <outputDirectory>src/main/resources/jmeter/lib/ext</outputDirectory>

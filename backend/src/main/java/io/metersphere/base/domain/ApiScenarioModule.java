@@ -19,5 +19,9 @@ public class ApiScenarioModule implements Serializable {
 
     private Long updateTime;
 
+    private Double pos;
+
+    private String createUser;
+
     private static final long serialVersionUID = 1L;
 }

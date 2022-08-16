@@ -23,5 +23,25 @@ public class Project implements Serializable {
 
     private String zentaoId;
 
+    private String azureDevopsId;
+
+    private String caseTemplateId;
+
+    private String issueTemplateId;
+
+    private String createUser;
+
+    private String systemId;
+
+    private String azureFilterId;
+
+    private String platform;
+
+    private Boolean thirdPartTemplate;
+
+    private Boolean versionEnable;
+
+    private String issueConfig;
+
     private static final long serialVersionUID = 1L;
 }

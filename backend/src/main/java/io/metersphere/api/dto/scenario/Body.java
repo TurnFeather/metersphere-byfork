@@ -1,8 +1,15 @@
 package io.metersphere.api.dto.scenario;
 
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import io.metersphere.api.dto.scenario.request.BodyFile;
+import io.metersphere.commons.json.JSONSchemaRunTest;
+import io.metersphere.commons.utils.FileUtils;
+import io.metersphere.jmeter.utils.ScriptEngineUtils;
 import lombok.Data;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.entity.ContentType;
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerProxy;
 import org.apache.jmeter.protocol.http.util.HTTPFileArg;
 
@@ -17,6 +24,8 @@ public class Body {
     private String format;
     private List<KeyValue> kvs;
     private List<KeyValue> binary;
+    private Object jsonSchema;
+    private String tmpFilePath;
 
     public final static String KV = "KeyValue";
     public final static String FORM_DATA = "Form Data";
@@ -28,17 +37,30 @@ public class Body {
 
     public boolean isValid() {
         if (this.isKV()) {
-            return kvs.stream().anyMatch(KeyValue::isValid);
+            if(kvs != null){
+                return kvs.stream().anyMatch(KeyValue::isValid);
+            }
         } else {
             return StringUtils.isNotBlank(raw);
         }
+        return false;
     }
 
     public boolean isKV() {
         if (StringUtils.equals(type, FORM_DATA) || StringUtils.equals(type, WWW_FROM)
                 || StringUtils.equals(type, BINARY)) {
             return true;
-        } else return false;
+        } else {
+            return false;
+        }
+    }
+
+    public boolean isOldKV() {
+        if (StringUtils.equals(type, KV)) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public List<KeyValue> getBodyParams(HTTPSamplerProxy sampler, String requestId) {
@@ -52,35 +74,79 @@ public class Body {
                 sampler.setDoMultipart(true);
             }
         } else {
-            if (!this.isJson()) {
+            if(StringUtils.isNotEmpty(this.getRaw()) || this.getJsonSchema()!= null ) {
+                parseJonBodyMock();
+                KeyValue keyValue = new KeyValue("", "JSON-SCHEMA", this.getRaw(), true, true);
                 sampler.setPostBodyRaw(true);
+                keyValue.setEnable(true);
+                keyValue.setUrlEncode(false);
+                body.add(keyValue);
             }
-            KeyValue keyValue = new KeyValue("", this.getRaw());
-            keyValue.setEnable(true);
-            keyValue.setEncode(false);
-            body.add(keyValue);
         }
         return body;
     }
 
+    private void parseJonBodyMock() {
+        if (StringUtils.isNotBlank(this.type) && StringUtils.equals(this.type, "JSON")) {
+            if(StringUtils.isNotEmpty(this.format) && this.getJsonSchema() != null
+                    && "JSON-SCHEMA".equals(this.format)) {
+                this.raw = JSONSchemaRunTest.getJson(com.alibaba.fastjson.JSON.toJSONString(this.getJsonSchema()));
+            } else {    //  json 文本也支持 mock 参数
+                try {
+                    JSONObject jsonObject = com.alibaba.fastjson.JSON.parseObject(this.getRaw());
+                    jsonMockParse(jsonObject);
+                    this.raw = JSONObject.toJSONString(jsonObject, SerializerFeature.WriteMapNullValue);
+                } catch (Exception e) {}
+            }
+        }
+    }
+
+    private void jsonMockParse(JSONObject jsonObject) {
+        for(String key : jsonObject.keySet()) {
+            Object value = jsonObject.get(key);
+            if(value instanceof JSONObject) {
+                jsonMockParse((JSONObject) value);
+            } else if(value instanceof String) {
+                if (StringUtils.isNotBlank((String) value)) {
+                    value = ScriptEngineUtils.buildFunctionCallString((String) value);
+                }
+                jsonObject.put(key, value);
+            }
+        }
+    }
+
     private HTTPFileArg[] httpFileArgs(String requestId) {
         List<HTTPFileArg> list = new ArrayList<>();
-        this.getKvs().stream().filter(KeyValue::isFile).filter(KeyValue::isEnable).forEach(keyValue -> {
-            setFileArg(list, keyValue.getFiles(), keyValue, requestId);
-        });
-        this.getBinary().stream().filter(KeyValue::isFile).filter(KeyValue::isEnable).forEach(keyValue -> {
-            setFileArg(list, keyValue.getFiles(), keyValue, requestId);
-        });
+        if (CollectionUtils.isNotEmpty(this.getKvs())) {
+            this.getKvs().stream().filter(KeyValue::isFile).filter(KeyValue::isEnable).forEach(keyValue -> {
+                setFileArg(list, keyValue.getFiles(), keyValue, requestId);
+            });
+        }
+        if (CollectionUtils.isNotEmpty(this.getBinary())) {
+            this.getBinary().stream().filter(KeyValue::isFile).filter(KeyValue::isEnable).forEach(keyValue -> {
+                setFileArg(list, keyValue.getFiles(), keyValue, requestId);
+            });
+        }
         return list.toArray(new HTTPFileArg[0]);
     }
 
     private void setFileArg(List<HTTPFileArg> list, List<BodyFile> files, KeyValue keyValue, String requestId) {
-        final String BODY_FILE_DIR = "/opt/metersphere/data/body";
         if (files != null) {
             files.forEach(file -> {
                 String paramName = keyValue.getName() == null ? requestId : keyValue.getName();
-                String path = BODY_FILE_DIR + '/' + file.getId() + '_' + file.getName();
+                String path = null;
+                if (StringUtils.isNotBlank(file.getId())) {
+                    // 旧数据
+                    path = FileUtils.BODY_FILE_DIR + '/' + file.getId() + '_' + file.getName();
+                } else if (StringUtils.isNotBlank(this.tmpFilePath)) {
+                    path = FileUtils.BODY_FILE_DIR + '/' + this.tmpFilePath + '/' + file.getName();
+                } else {
+                    path = FileUtils.BODY_FILE_DIR + '/' + requestId + '/' + file.getName();
+                }
                 String mimetype = keyValue.getContentType();
+                if (StringUtils.isBlank(mimetype)) {
+                    mimetype = ContentType.APPLICATION_OCTET_STREAM.getMimeType();
+                }
                 list.add(new HTTPFileArg(path, paramName, mimetype));
             });
         }
@@ -98,11 +164,19 @@ public class Body {
         return StringUtils.equals(type, XML);
     }
 
-    public boolean isWwwFROM() {
-        return StringUtils.equals(type, WWW_FROM);
+    public void init() {
+        this.type = "";
+        this.raw = "";
+        this.format = "";
     }
 
-    public boolean isFromData() {
-        return StringUtils.equals(type, FORM_DATA);
+    public void initKvs() {
+        this.kvs = new ArrayList<>();
+        this.kvs.add(new KeyValue());
+    }
+
+    public void initBinary() {
+        this.binary = new ArrayList<>();
+        this.binary.add(new KeyValue());
     }
 }

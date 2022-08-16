@@ -47,7 +47,7 @@
 </template>
 
 <script>
-  import {checkoutTestManagerOrTestUser, exportPdf, jsonToMap, mapToJson} from "../../../../../../../common/js/utils";
+  import {exportPdf, jsonToMap, mapToJson} from "../../../../../../../common/js/utils";
   import BaseInfoComponent from "./TemplateComponent/BaseInfoComponent";
   import TestResultChartComponent from "./TemplateComponent/TestResultChartComponent";
   import TestResultComponent from "./TemplateComponent/TestResultComponent";
@@ -90,7 +90,7 @@
       }
     },
     mounted() {
-      this.isTestManagerOrTestUser = checkoutTestManagerOrTestUser();
+      this.isTestManagerOrTestUser = true;
     },
     methods: {
       listenGoBack() {
@@ -150,9 +150,12 @@
       handleSave() {
         let param = {};
         this.buildParam(param);
-        this.result = this.$post('/case/report/edit', param, () => {
-          this.$success(this.$t('commons.save_success'));
+        this.$get('/test/plan/report/saveTestPlanReport/'+this.planId+'/MANUAL', () => {
+          this.result = this.$post('/case/report/edit', param, () => {
+            this.$success(this.$t('commons.save_success'));
+          });
         });
+
       },
       buildParam(param) {
         let content = {};

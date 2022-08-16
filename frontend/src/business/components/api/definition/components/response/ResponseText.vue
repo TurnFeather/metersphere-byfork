@@ -1,5 +1,5 @@
 <template>
-  <div class="text-container" style="border:1px #DCDFE6 solid; height: 100%;border-radius: 4px ;width: 88%">
+  <div class="text-container" style="border:1px #DCDFE6 solid; height: 100%;border-radius: 4px ;width: 100%">
     <el-form :model="response" ref="response" label-width="100px">
 
       <el-collapse-transition>
@@ -8,12 +8,12 @@
             <ms-api-key-value :isShowEnable="false" :suggestions="headerSuggestions" :items="response.headers"/>
           </el-tab-pane>
           <el-tab-pane :label="$t('api_test.definition.request.response_body')" name="body" class="pane">
-            <ms-api-body :isShowEnable="false" :body="response.body" :headers="response.headers"/>
+            <ms-api-body :isReadOnly="false" :isShowEnable="false" :body="response.body" :headers="response.headers"/>
           </el-tab-pane>
 
-          <el-tab-pane :label="$t('api_test.definition.request.status_code')" name="status_code" class="pane">
+          <el-tab-pane :label="$t('api_test.definition.request.status_code')" name="status_code" class="pane" >
             <ms-api-key-value :isShowEnable="false" :suggestions="headerSuggestions"
-                              :items="response.statusCode"/>
+                              :items="response.statusCode" :unShowSelect = "true"/>
           </el-tab-pane>
         </el-tabs>
       </el-collapse-transition>
@@ -51,7 +51,6 @@
 
       }
     },
-
     methods: {
       active() {
         this.isActive = !this.isActive;
@@ -85,7 +84,7 @@
 
   .text-container .pane {
     background-color: white;
-    padding: 0 10px;
+  padding: 1px 0;
     height: 250px;
     overflow-y: auto;
   }

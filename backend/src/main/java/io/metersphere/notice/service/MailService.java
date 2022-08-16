@@ -27,11 +27,12 @@ public class MailService {
         javaMailSender.setDefaultEncoding("UTF-8");
         javaMailSender.setProtocol("smtp");
         props.put("mail.smtp.auth", "true");
-
+        String smtpHost = "";
         for (SystemParameter p : paramList) {
             switch (p.getParamKey()) {
                 case "smtp.host":
                     javaMailSender.setHost(p.getParamValue());
+                    smtpHost = p.getParamValue();
                     break;
                 case "smtp.port":
                     javaMailSender.setPort(Integer.parseInt(p.getParamValue()));
@@ -52,15 +53,16 @@ public class MailService {
                     String result = BooleanUtils.toString(BooleanUtils.toBoolean(p.getParamValue()), "true", "false");
                     props.put("mail.smtp.starttls.enable", result);
                     props.put("mail.smtp.starttls.required", result);
+                    props.put("mail.smtp.ssl.trust", smtpHost);
                     break;
-                case "smtp.anon":
+             /*   case "smtp.anon":
                     boolean isAnon = BooleanUtils.toBoolean(p.getParamValue());
                     if (isAnon) {
                         props.put("mail.smtp.auth", "false");
                         javaMailSender.setUsername(null);
                         javaMailSender.setPassword(null);
                     }
-                    break;
+                    break;*/
                 default:
                     break;
             }

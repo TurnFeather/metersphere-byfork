@@ -65,13 +65,17 @@
     </sql>
 
     <select id="getReportList" resultType="io.metersphere.dto.ReportDTO">
-        select ltr.id, ltr.name, ltr.test_id as testId, ltr.description, user.name as userName, project.name as
+        select ltr.id, ltr.name, ltr.test_id as testId, ltr.max_users maxUsers, ltr.avg_response_time avgResponseTime,
+        ltr.tps, ltr.test_start_time as testStartTime, ltr.test_end_time as testEndTime, ltr.test_duration as testDuration,
+        ltr.description, user.name as userName, project.name as
         projectName, ltr.trigger_mode,
-        ltr.create_time as createTime, ltr.update_time as updateTime, ltr.status as status, lt.name as testName
+        ltr.create_time as createTime, ltr.update_time as updateTime, ltr.status as status, ltr.test_name as testName,
+        project.id as projectId, project_version.name as version_name
         from load_test_report ltr
-        join load_test lt on ltr.test_id = lt.id
+        left join load_test lt on ltr.test_id = lt.id
         join user on ltr.user_id = user.id
-        join project on project.id = lt.project_id
+        join project on project.id = ltr.project_id
+        JOIN project_version on project.id = project_version.project_id AND ltr.version_id = project_version.id
         <where>
             <if test="reportRequest.combine != null">
                 <include refid="combine">
@@ -91,12 +95,21 @@
             <if test="reportRequest.projectId != null">
                 AND project.id = #{reportRequest.projectId,jdbcType=VARCHAR}
             </if>
+            <if test="reportRequest.testId != null">
+                AND ltr.test_id = #{reportRequest.testId,jdbcType=VARCHAR}
+            </if>
             <if test="reportRequest.filters != null and reportRequest.filters.size() > 0">
                 <foreach collection="reportRequest.filters.entrySet()" index="key" item="values">
                     <if test="values != null and values.size() > 0">
                         <choose>
                             <when test="key=='status'">
                                 and ltr.status in
+                                <foreach collection="values" item="value" separator="," open="(" close=")">
+                                    #{value}
+                                </foreach>
+                            </when>
+                            <when test="key=='project_id'">
+                                and ltr.project_id in
                                 <foreach collection="values" item="value" separator="," open="(" close=")">
                                     #{value}
                                 </foreach>
@@ -122,10 +135,10 @@
     </select>
 
     <select id="getReportTestAndProInfo" resultType="io.metersphere.dto.ReportDTO">
-        select ltr.id, ltr.name, ltr.test_id as testId, ltr.description,
-        ltr.create_time as createTime, ltr.update_time as updateTime, ltr.status as status, lt.name as testName,
-        p.id as projectId, p.name as projectName
-        from load_test_report ltr join load_test lt on ltr.test_id = lt.id join project p on lt.project_id = p.id
+        select ltr.*,
+        p.id as projectId, p.name as projectName, user.name as userName
+        from load_test_report ltr left join load_test lt on ltr.test_id = lt.id join project p on ltr.project_id = p.id
+        JOIN user on ltr.user_id = user.id
         where ltr.id = #{id}
     </select>
 
@@ -137,7 +150,8 @@
         FROM load_test
         JOIN project ON load_test.project_id = project.id
         WHERE workspace_id = #{workspaceId,jdbcType=VARCHAR})
-        AND create_time > #{startTimestamp}
+          AND create_time
+            > #{startTimestamp}
         GROUP BY x
     </select>
 
@@ -147,5 +161,29 @@
         WHERE report_id = #{reportId}
         GROUP BY resource_id
     </select>
+    <select id="selectReportByProjectId" resultType="io.metersphere.base.domain.LoadTestReport">
+        select t.*
+        from load_test_report t
+                 left join `user` t1 ON t.user_id = t1.id
+                 left join test_resource_pool t2 on t.test_resource_pool_id = t2.id
+        where to_days(FROM_UNIXTIME(t.create_time / 1000)) = to_days(now())
+          and t.project_id = #{projectId}
+          and t.status = 'running'
+
+    </select>
+    <select id="selectForPlanReport" resultType="io.metersphere.track.dto.PlanReportCaseDTO">
+        select status from load_test_report
+        WHERE id IN
+        <foreach collection="ids" item="value" separator="," open="(" close=")">
+            #{value}
+        </foreach>
+    </select>
+
+    <update id="updateJmxContentIfAbsent">
+        update load_test_report
+        set jmx_content = #{jmxContent,jdbcType=VARCHAR}
+        WHERE id = #{id,jdbcType=VARCHAR}
+          and jmx_content is null
+    </update>
 
 </mapper>

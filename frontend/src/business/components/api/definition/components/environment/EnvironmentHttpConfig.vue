@@ -13,6 +13,7 @@
       </el-form-item>
 
       <span>{{$t('api_test.request.headers')}}</span>
+      <batch-add-parameter-button :data="httpConfig.headers"/>
       <ms-api-key-value :items="httpConfig.headers" :isShowEnable="true" :suggestions="headerSuggestions"/>
     </el-form>
 </template>
@@ -21,10 +22,11 @@
     import {HttpConfig} from "../../model/EnvironmentModel";
     import MsApiKeyValue from "../ApiKeyValue";
     import {REQUEST_HEADERS} from "../../../../../../common/js/constants";
+    import BatchAddParameterButton from "../basis/BatchAddParameterButton";
 
     export default {
       name: "MsEnvironmentHttpConfig",
-      components: {MsApiKeyValue},
+      components: {BatchAddParameterButton, MsApiKeyValue},
       props: {
         httpConfig: new HttpConfig(),
       },
@@ -47,7 +49,13 @@
       },
       methods: {
         validateSocket(socket) {
-          if (!socket) return true;
+          if (!socket) {
+            this.httpConfig.domain = socket;
+            this.httpConfig.port = '';
+            this.httpConfig.socket = socket;
+            return true;
+          }
+
           let urlStr = this.httpConfig.protocol + '://' + socket;
           let url = {};
           try {
@@ -56,7 +64,6 @@
             return false;
           }
           this.httpConfig.domain = decodeURIComponent(url.hostname);
-
           this.httpConfig.port = url.port;
           let path = url.pathname === '/' ? '' : url.pathname;
           if (url.port) {

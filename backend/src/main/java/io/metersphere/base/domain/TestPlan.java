@@ -1,8 +1,7 @@
 package io.metersphere.base.domain;
 
-import lombok.Data;
-
 import java.io.Serializable;
+import lombok.Data;
 
 @Data
 public class TestPlan implements Serializable {
@@ -20,8 +19,6 @@ public class TestPlan implements Serializable {
 
     private String stage;
 
-    private String principal;
-
     private String testCaseMatchRule;
 
     private String executorMatchRule;
@@ -30,21 +27,23 @@ public class TestPlan implements Serializable {
 
     private Long updateTime;
 
-    private Long actualEndTime;
-
     private Long plannedStartTime;
 
     private Long plannedEndTime;
 
     private Long actualStartTime;
 
+    private Long actualEndTime;
+
     private String creator;
 
-    private String apiIds;
+    private String projectId;
 
-    private String scenarioIds;
+    private Integer executionTimes;
 
-    private String tags;
+    private Boolean automaticStatusUpdate;
+
+    private Boolean repeatCase;
 
     private static final long serialVersionUID = 1L;
 }

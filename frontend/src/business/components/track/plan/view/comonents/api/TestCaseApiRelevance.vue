@@ -7,62 +7,50 @@
     ref="baseRelevance">
 
     <template v-slot:aside>
-      <node-tree class="node-tree"
-                 @nodeSelectEvent="nodeChange"
-                 @refresh="refresh"
-                 :tree-nodes="treeNodes"
-                 ref="nodeTree"/>
+      <ms-api-module
+        :relevance-project-id="projectId"
+        @nodeSelectEvent="nodeChange"
+        @protocolChange="handleProtocolChange"
+        @refreshTable="refresh"
+        @setModuleOptions="setModuleOptions"
+        :is-read-only="true"
+        ref="nodeTree"/>
     </template>
 
-    <ms-table-header :condition.sync="condition" @search="search" title="" :show-create="false"/>
+    <relevance-api-list
+      v-if="isApiListEnable"
+      :current-protocol="currentProtocol"
+      :select-node-ids="selectNodeIds"
+      :is-api-list-enable="isApiListEnable"
+      :project-id="projectId"
+      :is-test-plan="true"
+      :plan-id="planId"
+      :versionFilters="versionFilters"
+      :version-enable="versionEnable"
+      @isApiListEnableChange="isApiListEnableChange"
+      ref="apiList">
+      <template v-slot:version>
+        <version-select v-xpack :project-id="projectId" @changeVersion="changeVersion($event,'api')" margin-left="10"/>
+      </template>
+    </relevance-api-list>
 
-    <el-table
-      v-loading="result.loading"
-      :data="testCases"
-      @filter-change="filter"
-      row-key="id"
-      @mouseleave.passive="leave"
-      v-el-table-infinite-scroll="scrollLoading"
-      @select-all="handleSelectAll"
-      @select="handleSelectionChange"
-      height="50vh"
-      ref="table">
-
-      <el-table-column
-        type="selection"></el-table-column>
-
-      <el-table-column
-        prop="name"
-        :label="$t('test_track.case.name')"
-        style="width: 100%">
-        <template v-slot:default="scope">
-          {{scope.row.name}}
-        </template>
-      </el-table-column>
-      <el-table-column
-        prop="priority"
-        :filters="priorityFilters"
-        column-key="priority"
-        :label="$t('test_track.case.priority')"
-        show-overflow-tooltip>
-        <template v-slot:default="scope">
-          <priority-table-item :value="scope.row.priority"/>
-        </template>
-      </el-table-column>
-      <el-table-column
-        prop="type"
-        :filters="typeFilters"
-        column-key="type"
-        :label="$t('test_track.case.type')"
-        show-overflow-tooltip>
-        <template v-slot:default="scope">
-          <type-table-item :value="scope.row.type"/>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <div v-if="!lineStatus" style="text-align: center">{{$t('test_track.review_view.last_page')}}</div>
-    <div style="text-align: center">共 {{total}} 条</div>
+    <relevance-case-list
+      v-if="!isApiListEnable"
+      :current-protocol="currentProtocol"
+      :select-node-ids="selectNodeIds"
+      :is-api-list-enable="isApiListEnable"
+      :project-id="projectId"
+      :is-test-plan="true"
+      :versionFilters="versionFilters"
+      :version-enable="versionEnable"
+      :plan-id="planId"
+      @isApiListEnableChange="isApiListEnableChange"
+      ref="apiCaseList">
+      <template v-slot:version>
+        <version-select v-xpack :project-id="projectId" @changeVersion="changeVersion($event, 'case')"
+                        margin-left="10"/>
+      </template>
+    </relevance-case-list>
 
   </test-case-relevance-base>
 
@@ -70,257 +58,191 @@
 
 <script>
 
-  import NodeTree from '../../../../common/NodeTree';
-  import PriorityTableItem from "../../../../common/tableItems/planview/PriorityTableItem";
-  import TypeTableItem from "../../../../common/tableItems/planview/TypeTableItem";
-  import MsTableSearchBar from "../../../../../common/components/MsTableSearchBar";
-  import MsTableAdvSearchBar from "../../../../../common/components/search/MsTableAdvSearchBar";
-  import MsTableHeader from "../../../../../common/components/MsTableHeader";
-  import {TEST_CASE_CONFIGS} from "../../../../../common/components/search/search-components";
-  import elTableInfiniteScroll from 'el-table-infinite-scroll';
   import TestCaseRelevanceBase from "../base/TestCaseRelevanceBase";
-  import {_filter} from "../../../../../../../common/js/utils";
+  import MsApiModule from "../../../../../api/definition/components/module/ApiModule";
+  import RelevanceApiList from "../../../../../api/automation/scenario/api/RelevanceApiList";
+  import RelevanceCaseList from "../../../../../api/automation/scenario/api/RelevanceCaseList";
+  import {getCurrentProjectID, hasLicense} from "@/common/js/utils";
+  const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
+  const VersionSelect = requireComponent.keys().length > 0 ? requireComponent("./version/VersionSelect.vue") : {};
 
   export default {
     name: "TestCaseApiRelevance",
     components: {
+      RelevanceCaseList,
+      RelevanceApiList,
+      MsApiModule,
       TestCaseRelevanceBase,
-      NodeTree,
-      PriorityTableItem,
-      TypeTableItem,
-      MsTableSearchBar,
-      MsTableAdvSearchBar,
-      MsTableHeader,
-    },
-    directives: {
-      'el-table-infinite-scroll': elTableInfiniteScroll
+      'VersionSelect': VersionSelect.default,
     },
     data() {
       return {
-        result: {},
-        isCheckAll: false,
-        testCases: [],
-        selectIds: new Set(),
-        treeNodes: [],
+        showCasePage: true,
+        currentProtocol: null,
+        currentModule: null,
         selectNodeIds: [],
-        selectNodeNames: [],
-        projectId: '',
-        projectName: '',
-        projects: [],
-        pageSize: 50,
-        currentPage: 1,
-        total: 0,
-        lineStatus: true,
-        condition: {
-          components: TEST_CASE_CONFIGS
-        },
-        priorityFilters: [
-          {text: 'P0', value: 'P0'},
-          {text: 'P1', value: 'P1'},
-          {text: 'P2', value: 'P2'},
-          {text: 'P3', value: 'P3'}
-        ],
-        typeFilters: [
-          {text: this.$t('commons.functional'), value: 'functional'},
-          {text: this.$t('commons.performance'), value: 'performance'},
-          {text: this.$t('commons.api'), value: 'api'}
-        ]
+        moduleOptions: {},
+        trashEnable: false,
+        isApiListEnable: true,
+        condition: {},
+        currentRow: {},
+        projectId: "",
+        versionFilters: [],
       };
     },
     props: {
       planId: {
         type: String
+      },
+      versionEnable: {
+        type: Boolean,
+        default: false
       }
     },
     watch: {
       planId() {
         this.condition.planId = this.planId;
       },
-      selectNodeIds() {
-        this.search();
-      },
-      projectId() {
-        this.condition.projectId = this.projectId;
-        this.getProjectNode();
-        this.search();
-      }
     },
-    updated() {
-      this.toggleSelection(this.testCases);
+    mounted() {
+      this.getVersionOptions();
     },
     methods: {
-
       open() {
+        this.init();
         this.$refs.baseRelevance.open();
+        if (this.$refs.apiList) {
+          this.$refs.apiList.clear();
+        }
+        if (this.$refs.apiCaseList) {
+          this.$refs.apiCaseList.clear();
+        }
+      },
+      init() {
+        if (this.$refs.apiList) {
+          this.$refs.apiList.initTable();
+        }
+        if (this.$refs.apiCaseList) {
+          this.$refs.apiCaseList.initTable();
+        }
+        if (this.$refs.nodeTree) {
+          this.$refs.nodeTree.list();
+        }
+      },
+      setProject(projectId) {
+        // 切换项目 清空环境和选中行
+        if (this.$refs.apiList) {
+          this.$refs.apiList.clearEnvAndSelect();
+        }
+        if (this.$refs.apiCaseList) {
+          this.$refs.apiCaseList.clearEnvAndSelect();
+        }
+        this.projectId = projectId;
+      },
+      isApiListEnableChange(data) {
+        this.isApiListEnable = data;
       },
 
-      setProject(projectId) {
-        this.projectId = projectId;
+      refresh(data) {
+        if (this.isApiListEnable) {
+          this.$refs.apiList.initTable(data);
+        } else {
+          this.$refs.apiCaseList.initTable(data);
+        }
+      },
+
+      nodeChange(node, nodeIds, pNodes) {
+        this.selectNodeIds = nodeIds;
+      },
+      handleProtocolChange(protocol) {
+        this.currentProtocol = protocol;
+      },
+      setModuleOptions(data) {
+        this.moduleOptions = data;
       },
 
       saveCaseRelevance() {
-        let param = {};
-        param.planId = this.planId;
-        param.testCaseIds = [...this.selectIds];
-        param.request = this.condition;
-        // 选择全选则全部加入到评审，无论是否加载完全部
-        if (this.testCases.length === param.testCaseIds.length) {
-          param.testCaseIds = ['all'];
+
+
+        let url = '';
+        let environmentId = undefined;
+        let selectIds = [];
+        if (this.isApiListEnable) {
+          //查找所有数据
+          let params = this.$refs.apiList.getConditions();
+          this.result = this.$post("/api/definition/list/batch", params, (response) => {
+            let apis = response.data;
+            url = '/api/definition/relevance';
+            environmentId = this.$refs.apiList.environmentId;
+            selectIds = Array.from(apis).map(row => row.id);
+            let protocol = this.$refs.apiList.currentProtocol;
+            this.postRelevance(url, environmentId, selectIds, protocol);
+          });
+        } else {
+          let params = this.$refs.apiCaseList.getConditions();
+          this.result = this.$post("/api/testcase/get/caseBLOBs/request", params, (response) => {
+            let apiCases = response.data;
+            url = '/api/testcase/relevance';
+            environmentId = this.$refs.apiCaseList.environmentId;
+            selectIds = Array.from(apiCases).map(row => row.id);
+            let protocol = this.$refs.apiCaseList.currentProtocol;
+            this.postRelevance(url, environmentId, selectIds, protocol);
+          });
         }
-        this.result = this.$post('/test/plan/relevance', param, () => {
-          this.selectIds.clear();
+
+      },
+
+      postRelevance(url, environmentId, selectIds, protocol) {
+        let param = {};
+        if (protocol !== 'DUBBO') {
+          if (!environmentId) {
+            this.$warning(this.$t('api_test.environment.select_environment'));
+            return;
+          }
+        }
+        param.planId = this.planId;
+        param.selectIds = selectIds;
+        param.environmentId = environmentId;
+
+        this.result = this.$post(url, param, () => {
           this.$success(this.$t('commons.save_success'));
-
-          this.$refs.baseRelevance.close();
-
           this.$emit('refresh');
+          this.refresh();
+          this.$refs.baseRelevance.close();
         });
       },
-      buildPagePath(path) {
-        return path + "/" + this.currentPage + "/" + this.pageSize;
-      },
-      search() {
-        this.currentPage = 1;
-        this.testCases = [];
-        this.getTestCases(true);
-      },
-      getTestCases(flag) {
-        if (this.planId) {
-          this.condition.planId = this.planId;
-        }
-        if (this.selectNodeIds && this.selectNodeIds.length > 0) {
-          this.condition.nodeIds = this.selectNodeIds;
-        } else {
-          this.condition.nodeIds = [];
-        }
-        if (this.projectId) {
-          this.condition.projectId = this.projectId;
-          // this.result = this.$post(this.buildPagePath('/test/case/name'), this.condition, response => {
-          //   let data = response.data;
-          //   this.total = data.itemCount;
-          //   let tableData = data.listObject;
-          //   tableData.forEach(item => {
-          //     item.checked = false;
-          //   });
-          //   flag ? this.testCases = tableData : this.testCases = this.testCases.concat(tableData);
-          //   // 去重处理
-          //   let hash = {}
-          //   this.testCases = this.testCases.reduce((item, next) => {
-          //     if (!hash[next.id]) {
-          //       hash[next.id] = true
-          //       item.push(next)
-          //     }
-          //     return item
-          //   }, [])
-          //
-          //   this.lineStatus = tableData.length === 50 && this.testCases.length < this.total;
-          // });
-          this.result = this.$post('/api/definition/list/1/10', this.condition, response => {
-            let data = response.data;
-            this.total = data.itemCount;
-            let tableData = data.listObject;
-            tableData.forEach(item => {
-              item.checked = false;
+      getVersionOptions() {
+        if (hasLicense()) {
+          this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+            this.versionOptions = response.data;
+            this.versionFilters = response.data.map(u => {
+              return {text: u.name, value: u.id};
             });
-            flag ? this.testCases = tableData : this.testCases = this.testCases.concat(tableData);
-            // 去重处理
-            let hash = {}
-            this.testCases = this.testCases.reduce((item, next) => {
-              if (!hash[next.id]) {
-                hash[next.id] = true
-                item.push(next)
-              }
-              return item
-            }, [])
-
-            this.lineStatus = tableData.length === 50 && this.testCases.length < this.total;
           });
         }
       },
-      handleSelectAll(selection) {
-        if (selection.length > 0) {
-          this.testCases.forEach(item => {
-            this.selectIds.add(item.id);
-          });
+      changeVersion(currentVersion, type) {
+        if (type == 'api') {
+          this.$refs.apiList.condition.versionId = currentVersion || null;
+          this.$refs.apiList.initTable();
         } else {
-          this.testCases.forEach(item => {
-            if (this.selectIds.has(item.id)) {
-              this.selectIds.delete(item.id);
-            }
-          });
+          this.$refs.apiCaseList.condition.versionId = currentVersion || null;
+          this.$refs.apiCaseList.initTable();
         }
-      },
-      handleSelectionChange(selection, row) {
-        if (this.selectIds.has(row.id)) {
-          this.selectIds.delete(row.id);
-        } else {
-          this.selectIds.add(row.id);
-        }
-      },
-      nodeChange(nodeIds, nodeNames) {
-        this.selectNodeIds = nodeIds;
-        this.selectNodeNames = nodeNames;
-      },
-      refresh() {
-        this.close();
-      },
-      scrollLoading() {
-        if (this.lineStatus) {
-          this.currentPage += 1;
-          this.getTestCases();
-        }
-      },
-      getAllNodeTreeByPlanId() {
-        if (this.planId) {
-          let param = {
-            testPlanId: this.planId,
-            projectId: this.projectId
-          };
-          this.result = this.$get('/api/module/list/' + this.project + '/HTTP', response => {
-            this.treeNodes = response.data;
-          });
-        }
-      },
-      close() {
-        this.lineStatus = false;
-        this.selectIds.clear();
-        this.selectNodeIds = [];
-        this.selectNodeNames = [];
-      },
-      filter(filters) {
-        _filter(filters, this.condition);
-        this.search();
-      },
-      toggleSelection(rows) {
-        rows.forEach(row => {
-          this.selectIds.forEach(id => {
-            if (row.id === id) {
-              // true 是为选中
-              this.$refs.table.toggleRowSelection(row, true)
-            }
-          })
-        })
-      },
-      getProjectNode(projectId) {
-        const index = this.projects.findIndex(project => project.id === projectId);
-        if (index !== -1) {
-          this.projectName = this.projects[index].name;
-        }
-        if (projectId) {
-          this.projectId = projectId;
-        }
-        this.$refs.nodeTree.result = this.$get('/api/module/list/' + this.projectId + '/HTTP', response => {
-            this.treeNodes = response.data;
-          });
-        // this.$refs.nodeTree.result = this.$post('/api/module/list/' + this.project + '/HTTP',
-        //   {testPlanId: this.planId, projectId: this.projectId}, response => {
-        //     this.treeNodes = response.data;
-        //   });
-        this.selectNodeIds = [];
       }
     }
   }
 </script>
 
 <style scoped>
+
+  /deep/ .select-menu {
+    margin-bottom: 15px;
+  }
+
+  /deep/ .environment-select {
+    float: right;
+    margin-right: 10px;
+  }
+
 </style>

@@ -9,9 +9,9 @@ import lombok.ToString;
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ApiTestCaseWithBLOBs extends ApiTestCase implements Serializable {
-    private String request;
+    private String description;
 
-    private String response;
+    private String request;
 
     private static final long serialVersionUID = 1L;
 }

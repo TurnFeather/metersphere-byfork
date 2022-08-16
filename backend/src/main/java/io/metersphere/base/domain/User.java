@@ -23,13 +23,15 @@ public class User implements Serializable {
 
     private String lastWorkspaceId;
 
-    private String lastOrganizationId;
-
     private String phone;
 
     private String source;
 
     private String lastProjectId;
+
+    private String createUser;
+
+    private String platformInfo;
 
     private static final long serialVersionUID = 1L;
 }

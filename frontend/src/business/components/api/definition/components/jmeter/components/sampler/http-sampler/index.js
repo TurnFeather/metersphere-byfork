@@ -4,9 +4,6 @@ import {Body} from "../../../../../model/ApiTestModel";
 const DEFAULT_OPTIONS = {
   options: {
     attributes: {
-      guiclass: "HttpTestSampleGui",
-      testclass: "HTTPSamplerProxy",
-      testname: "HTTPSamplerProxy",
       enabled: "true"
     },
   }
@@ -29,8 +26,8 @@ export default class HTTPSamplerProxy extends Sampler {
     this.doMultipartPost = false;
     this.browserCompatibleMultipart = undefined;
     this.embeddedUrlRe = undefined;
-    this.connectTimeout = 6000;
-    this.responseTimeout = 6000;
+    this.connectTimeout = 60000;
+    this.responseTimeout = 60000;
     // 初始化主体对象
     this.body = new Body();
     this.arguments = [];

@@ -11,10 +11,10 @@ public class LogUtil {
     //日志工具类
 //	public static final Log Logger = LogFactory.getLog(LogUtil.class);
 
-    private static final String DEBUG = "DEBUG";
-    private static final String INFO = "INFO";
-    private static final String WARN = "WARN";
-    private static final String ERROR = "ERROR";
+    public static final String DEBUG = "DEBUG";
+    public static final String INFO = "INFO";
+    public static final String WARN = "WARN";
+    public static final String ERROR = "ERROR";
 
     /**
      * 初始化日志
@@ -139,6 +139,13 @@ public class LogUtil {
         Logger logger = LogUtil.getLogger();
         if (logger != null && logger.isErrorEnabled()) {
             logger.error(LogUtil.getMsg(msg));// 并追加方法名称
+        }
+    }
+
+    public static void error(Throwable e) {
+        Logger logger = LogUtil.getLogger();
+        if (logger != null && logger.isErrorEnabled()) {
+            logger.error(LogUtil.getMsg(e), e);// 同时打印错误堆栈信息
         }
     }
 

@@ -3,12 +3,25 @@ package io.metersphere.track.issue;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.TypeReference;
 import io.metersphere.base.domain.*;
 import io.metersphere.commons.constants.IssuesManagePlatform;
+import io.metersphere.commons.constants.IssuesStatus;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.dto.UserDTO;
+import io.metersphere.track.dto.DemandDTO;
+import io.metersphere.track.issue.client.ZentaoClient;
+import io.metersphere.track.issue.domain.PlatformUser;
+import io.metersphere.track.issue.domain.zentao.AddIssueResponse;
+import io.metersphere.track.issue.domain.zentao.GetIssueResponse;
+import io.metersphere.track.issue.domain.zentao.ZentaoBuild;
+import io.metersphere.track.issue.domain.zentao.ZentaoConfig;
 import io.metersphere.track.request.testcase.IssuesRequest;
+import io.metersphere.track.request.testcase.IssuesUpdateRequest;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.util.Strings;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -19,235 +32,279 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ZentaoPlatform extends AbstractIssuePlatform {
-    /**
-     * zentao account
-     */
-    private final String account;
-    /**
-     * zentao password
-     */
-    private final String password;
-    /**
-     * zentao url eg:http://x.x.x.x/zentao
-     */
-    private final String url;
+    protected final ZentaoClient zentaoClient;
 
     public ZentaoPlatform(IssuesRequest issuesRequest) {
         super(issuesRequest);
-        String config = getPlatformConfig(IssuesManagePlatform.Zentao.toString());
-        JSONObject object = JSON.parseObject(config);
-        this.account = object.getString("account");
-        this.password = object.getString("password");
-        this.url = object.getString("url");
+        this.key = IssuesManagePlatform.Zentao.name();
+        ZentaoConfig zentaoConfig = getConfig();
+        this.workspaceId = issuesRequest.getWorkspaceId();
+        this.zentaoClient = ZentaoFactory.getInstance(zentaoConfig.getUrl(), zentaoConfig.getRequest());
+        this.zentaoClient.setConfig(zentaoConfig);
     }
 
     @Override
-    String getProjectId() {
-        TestCaseWithBLOBs testCase = testCaseService.getTestCase(testCaseId);
-        Project project = projectService.getProjectById(testCase.getProjectId());
-        return project.getZentaoId();
+    public String getProjectId(String projectId) {
+        return getProjectId(projectId, Project::getZentaoId);
     }
 
     @Override
-    public List<Issues> getIssue() {
-        List<Issues> list = new ArrayList<>();
-
-        TestCaseIssuesExample example = new TestCaseIssuesExample();
-        example.createCriteria().andTestCaseIdEqualTo(testCaseId);
-
-        List<Issues> issues = extIssuesMapper.getIssues(testCaseId, IssuesManagePlatform.Zentao.toString());
-
-        List<String> issuesIds = issues.stream().map(Issues::getId).collect(Collectors.toList());
-        issuesIds.forEach(issuesId -> {
-            Issues dto = getZentaoIssues(issuesId);
-            if (StringUtils.isBlank(dto.getId())) {
-                // 缺陷不存在，解除用例和缺陷的关联
-                TestCaseIssuesExample issuesExample = new TestCaseIssuesExample();
-                issuesExample.createCriteria()
-                        .andTestCaseIdEqualTo(testCaseId)
-                        .andIssuesIdEqualTo(issuesId);
-                testCaseIssuesMapper.deleteByExample(issuesExample);
-                issuesMapper.deleteByPrimaryKey(issuesId);
-            } else {
-                dto.setPlatform(IssuesManagePlatform.Zentao.toString());
-                // 缺陷状态为 关闭，则不显示
-                if (!StringUtils.equals("closed", dto.getStatus())) {
-                    list.add(dto);
-                }
-            }
-        });
-        return list;
-
+    public List<IssuesDao> getIssue(IssuesRequest issuesRequest) {
+        issuesRequest.setPlatform(key);
+        List<IssuesDao> issues;
+        if (StringUtils.isNotBlank(issuesRequest.getProjectId())) {
+            issues = extIssuesMapper.getIssues(issuesRequest);
+        } else {
+            issues = extIssuesMapper.getIssuesByCaseId(issuesRequest);
+        }
+        return issues;
     }
 
-    private Issues getZentaoIssues(String bugId) {
-        String session = login();
-        HttpEntity<MultiValueMap> requestEntity = new HttpEntity<>(new HttpHeaders());
-        RestTemplate restTemplate = new RestTemplate();
+    public IssuesDao getZentaoAssignedAndBuilds(IssuesDao issue){
+        JSONObject zentaoIssue = zentaoClient.getBugById(issue.getPlatformId());
+        String assignedTo = zentaoIssue.getString("assignedTo");
+        String openedBuild = zentaoIssue.getString("openedBuild");
+        List<String>zentaoBuilds = new ArrayList<>();
+        if(Strings.isNotBlank(openedBuild)){
+            zentaoBuilds = Arrays.asList(openedBuild.split(","));
+        }
+        issue.setZentaoAssigned(assignedTo);
+        issue.setZentaoBuilds(zentaoBuilds);
+        return issue;
+    }
+
+    @Override
+    public List<DemandDTO> getDemandList(String projectId) {
+        //getTestStories
+        List<DemandDTO> list = new ArrayList<>();
         try {
-            ResponseEntity<String> responseEntity = restTemplate.exchange(url + "api-getModel-bug-getById-bugID={bugId}?zentaosid=" + session,
-                    HttpMethod.POST, requestEntity, String.class, bugId);
+            String session = zentaoClient.login();
+            String key = getProjectId(projectId);
+            HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(new HttpHeaders());
+            RestTemplate restTemplate = new RestTemplate();
+            String storyGet = zentaoClient.requestUrl.getStoryGet();
+            ResponseEntity<String> responseEntity = restTemplate.exchange(storyGet + session,
+                    HttpMethod.POST, requestEntity, String.class, key);
             String body = responseEntity.getBody();
             JSONObject obj = JSONObject.parseObject(body);
 
-            LogUtil.info("bug id is " + bugId + obj);
+            LogUtil.info("project story: " + key + obj);
 
             if (obj != null) {
-                JSONObject bug = obj.getJSONObject("data");
-                String id = bug.getString("id");
-                String title = bug.getString("title");
-                String description = bug.getString("steps");
-                Long createTime = bug.getLong("openedDate");
-                String status = bug.getString("status");
-                String reporter = bug.getString("openedBy");
-                int deleted = bug.getInteger("deleted");
-                if (deleted == 1) {
-                    return new Issues();
+                String data = obj.getString("data");
+                if (StringUtils.isBlank(data)) {
+                    return list;
                 }
-                Issues issues = new Issues();
-                issues.setId(id);
-                issues.setTitle(title);
-                issues.setDescription(description);
-                issues.setCreateTime(createTime);
-                issues.setStatus(status);
-                issues.setReporter(reporter);
-                return issues;
+                // 兼容处理11.5版本格式 [{obj},{obj}]
+                if (data.charAt(0) == '[') {
+                    JSONArray array = obj.getJSONArray("data");
+                    for (int i = 0; i < array.size(); i++) {
+                        JSONObject o = array.getJSONObject(i);
+                        DemandDTO demandDTO = new DemandDTO();
+                        demandDTO.setId(o.getString("id"));
+                        demandDTO.setName(o.getString("title"));
+                        demandDTO.setPlatform(key);
+                        list.add(demandDTO);
+                    }
+                }
+                // 处理格式 {{"id": {obj}},{"id",{obj}}}
+                else if (data.charAt(0) == '{') {
+                    JSONObject dataObject = obj.getJSONObject("data");
+                    String s = JSON.toJSONString(dataObject);
+                    Map<String, Object> map = JSONArray.parseObject(s, new TypeReference<Map<String, Object>>(){});
+                    Collection<Object> values = map.values();
+                    values.forEach(v -> {
+                        JSONObject jsonObject = JSONObject.parseObject(JSON.toJSONString(v));
+                        DemandDTO demandDTO = new DemandDTO();
+                        demandDTO.setId(jsonObject.getString("id"));
+                        demandDTO.setName(jsonObject.getString("title"));
+                        demandDTO.setPlatform(key);
+                        list.add(demandDTO);
+                    });
+                }
             }
         } catch (Exception e) {
-            LogUtil.error("get zentao bug fail " + e.getMessage());
+            LogUtil.error("get zentao demand fail " + e.getMessage());
         }
+        return list;
+    }
 
-        return new Issues();
+    public IssuesWithBLOBs getUpdateIssues(IssuesWithBLOBs issue, JSONObject bug) {
+        GetIssueResponse.Issue bugObj = JSONObject.parseObject(bug.toJSONString(), GetIssueResponse.Issue.class);
+        String description = bugObj.getSteps();
+        String steps = description;
+        try {
+            steps = zentao2MsDescription(description);
+        } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
+        }
+        if (issue == null) {
+            issue = new IssuesWithBLOBs();
+            issue.setCustomFields(defaultCustomFields);
+        } else {
+            mergeCustomField(issue, defaultCustomFields);
+        }
+        issue.setPlatformStatus(bugObj.getStatus());
+        if (StringUtils.equals(bugObj.getDeleted(),"1")) {
+            issue.setPlatformStatus(IssuesStatus.DELETE.toString());
+            issuesMapper.updateByPrimaryKeySelective(issue);
+        }
+        issue.setTitle(bugObj.getTitle());
+
+        // 保留之前上传的图片
+        String images = getImages(issue.getDescription());
+        issue.setDescription(steps + "\n" + images);
+
+        issue.setReporter(bugObj.getOpenedBy());
+        issue.setPlatform(key);
+        try {
+            String openedDate = bug.getString("openedDate");
+            String lastEditedDate = bug.getString("lastEditedDate");
+            if (StringUtils.isNotBlank(openedDate) && !openedDate.startsWith("0000-00-00"))
+                issue.setCreateTime(bug.getLong("openedDate"));
+            if (StringUtils.isNotBlank(lastEditedDate)  && !lastEditedDate.startsWith("0000-00-00"))
+                issue.setUpdateTime(bug.getLong("lastEditedDate"));
+        } catch (Exception e) {
+            LogUtil.error("update zentao time" + e.getMessage());
+        }
+        if (issue.getUpdateTime() == null) {
+            issue.setUpdateTime(System.currentTimeMillis());
+        }
+        issue.setCustomFields(syncIssueCustomField(issue.getCustomFields(), bug));
+        return issue;
     }
 
     @Override
-    public void addIssue(IssuesRequest issuesRequest) {
+    public IssuesWithBLOBs addIssue(IssuesUpdateRequest issuesRequest) {
+        setUserConfig();
 
-        String session = login();
-        String projectId = getProjectId();
+        MultiValueMap<String, Object> param = buildUpdateParam(issuesRequest);
+        AddIssueResponse.Issue issue = zentaoClient.addIssue(param);
+        issuesRequest.setPlatformStatus(issue.getStatus());
 
+        IssuesWithBLOBs issues = null;
+
+        String id = issue.getId();
+        if (StringUtils.isNotBlank(id)) {
+            issuesRequest.setPlatformId(id);
+            issuesRequest.setId(UUID.randomUUID().toString());
+
+            IssuesExample issuesExample = new IssuesExample();
+            issuesExample.createCriteria().andIdEqualTo(id)
+                    .andPlatformEqualTo(key);
+            if (issuesMapper.selectByExample(issuesExample).size() <= 0) {
+                // 插入缺陷表
+                issues = insertIssues(issuesRequest);
+            }
+
+            // 用例与第三方缺陷平台中的缺陷关联
+            handleTestCaseIssues(issuesRequest);
+        } else {
+            MSException.throwException("请确认该Zentao账号是否开启超级modle调用接口权限");
+        }
+        return issues;
+    }
+
+    @Override
+    public void updateIssue(IssuesUpdateRequest request) {
+        setUserConfig();
+        MultiValueMap<String, Object> param = buildUpdateParam(request);
+        handleIssueUpdate(request);
+        zentaoClient.updateIssue(request.getPlatformId(), param);
+    }
+
+    private MultiValueMap<String, Object> buildUpdateParam(IssuesUpdateRequest issuesRequest) {
+        issuesRequest.setPlatform(key);
+        String projectId = getProjectId(issuesRequest.getProjectId());
         if (StringUtils.isBlank(projectId)) {
-            MSException.throwException("add zentao bug fail, project zentao id is null");
+            MSException.throwException("未关联禅道项目ID.");
         }
-
-        if (StringUtils.isBlank(session)) {
-            MSException.throwException("session is null");
-        }
-
         MultiValueMap<String, Object> paramMap = new LinkedMultiValueMap<>();
         paramMap.add("product", projectId);
         paramMap.add("title", issuesRequest.getTitle());
-        paramMap.add("steps", issuesRequest.getContent());
+
+        addCustomFields(issuesRequest, paramMap);
+
+        String description = issuesRequest.getDescription();
+        String zentaoSteps = description;
+
+        // transfer description
+        try {
+            zentaoSteps = ms2ZentaoDescription(description);
+            zentaoSteps = zentaoSteps.replaceAll("\\n", "<br/>");
+        } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
+        }
+        LogUtil.info("zentao description transfer: " + zentaoSteps);
+
+        paramMap.add("steps", zentaoSteps);
         if (!CollectionUtils.isEmpty(issuesRequest.getZentaoBuilds())) {
             List<String> builds = issuesRequest.getZentaoBuilds();
-            builds.forEach(build -> {
-                paramMap.add("openedBuild[]", build);
-            });
+            builds.forEach(build -> paramMap.add("openedBuild[]", build));
         } else {
             paramMap.add("openedBuild", "trunk");
         }
-        if (StringUtils.isNotBlank(issuesRequest.getZentaoUser())) {
-            paramMap.add("assignedTo", issuesRequest.getZentaoUser());
+        if (StringUtils.isNotBlank(issuesRequest.getZentaoAssigned())) {
+            paramMap.add("assignedTo", issuesRequest.getZentaoAssigned());
         }
-
-        HttpEntity<MultiValueMap> requestEntity = new HttpEntity<>(paramMap, new HttpHeaders());
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> responseEntity = restTemplate.exchange(url + "api-getModel-bug-create.json?zentaosid=" + session, HttpMethod.POST, requestEntity, String.class);
-        String body = responseEntity.getBody();
-        JSONObject obj = JSONObject.parseObject(body);
-
-        LogUtil.info("add zentao bug " + obj);
-
-        if (obj != null) {
-            JSONObject data = obj.getJSONObject("data");
-            String id = data.getString("id");
-            if (StringUtils.isNotBlank(id)) {
-                // 用例与第三方缺陷平台中的缺陷关联
-                TestCaseIssues testCaseIssues = new TestCaseIssues();
-                testCaseIssues.setId(UUID.randomUUID().toString());
-                testCaseIssues.setIssuesId(id);
-                testCaseIssues.setTestCaseId(testCaseId);
-                testCaseIssuesMapper.insert(testCaseIssues);
-
-                IssuesExample issuesExample = new IssuesExample();
-                issuesExample.createCriteria().andIdEqualTo(id)
-                        .andPlatformEqualTo(IssuesManagePlatform.Zentao.toString());
-                if (issuesMapper.selectByExample(issuesExample).size() <= 0) {
-                    // 插入缺陷表
-                    Issues issues = new Issues();
-                    issues.setId(id);
-                    issues.setPlatform(IssuesManagePlatform.Zentao.toString());
-                    issuesMapper.insert(issues);
-                }
-            }
-        }
+        return paramMap;
     }
 
     @Override
     public void deleteIssue(String id) {
-
+        IssuesWithBLOBs issuesWithBLOBs = issuesMapper.selectByPrimaryKey(id);
+        super.deleteIssue(id);
+        zentaoClient.deleteIssue(issuesWithBLOBs.getPlatformId());
     }
 
     @Override
     public void testAuth() {
-        try {
-            login();
-        } catch (Exception e) {
-            LogUtil.error(e.getMessage(), e);
-            MSException.throwException("验证失败！");
-        }
-
+        zentaoClient.login();
     }
 
-
-    private String login() {
-        String session = getSession();
-        String loginUrl = url + "user-login.json?zentaosid=" + session;
-        MultiValueMap<String, Object> paramMap = new LinkedMultiValueMap<>();
-        paramMap.add("account", account);
-        paramMap.add("password", password);
-        HttpEntity<MultiValueMap> requestEntity = new HttpEntity<>(paramMap, new HttpHeaders());
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> responseEntity = restTemplate.exchange(loginUrl, HttpMethod.POST, requestEntity, String.class);
-        String body = responseEntity.getBody();
-        JSONObject obj = JSONObject.parseObject(body);
-        JSONObject user = obj.getJSONObject("user");
-        if (user == null) {
-            LogUtil.error("login fail");
-            LogUtil.error(obj);
-            // 登录失败，获取的session无效，置空session
-            MSException.throwException("zentao login fail");
-        }
-        String username = user.getString("account");
-        if (!StringUtils.equals(username, account)) {
-            LogUtil.error("login fail，inconsistent users");
-            MSException.throwException("zentao login fail");
-        }
-        return session;
+    @Override
+    public void userAuth(UserDTO.PlatformInfo userInfo) {
+        setUserConfig(userInfo);
+        zentaoClient.login();
     }
 
-    private String getSession() {
-        RestTemplate restTemplate = new RestTemplate();
-        HttpEntity<MultiValueMap> requestEntity = new HttpEntity<>(new HttpHeaders());
-        ResponseEntity<String> responseEntity = restTemplate.exchange(url + "api-getsessionid.json", HttpMethod.GET, requestEntity, String.class);
-        String body = responseEntity.getBody();
-        JSONObject obj = JSONObject.parseObject(body);
-        JSONObject data = obj.getJSONObject("data");
-        String session = data.getString("sessionID");
-        return session;
+    public ZentaoConfig getConfig() {
+        return getConfig(key, ZentaoConfig.class);
+    }
+
+    public ZentaoConfig setConfig() {
+        ZentaoConfig config = getConfig();
+        zentaoClient.setConfig(config);
+        return config;
+    }
+
+    public ZentaoConfig setUserConfig() {
+        return setUserConfig(getUserPlatInfo(this.workspaceId));
+    }
+
+    public ZentaoConfig setUserConfig(UserDTO.PlatformInfo userPlatInfo) {
+        ZentaoConfig zentaoConfig = getConfig();
+        if (userPlatInfo != null && StringUtils.isNotBlank(userPlatInfo.getZentaoUserName())
+                && StringUtils.isNotBlank(userPlatInfo.getZentaoPassword())) {
+            zentaoConfig.setAccount(userPlatInfo.getZentaoUserName());
+            zentaoConfig.setPassword(userPlatInfo.getZentaoPassword());
+        }
+        zentaoClient.setConfig(zentaoConfig);
+        return zentaoConfig;
     }
 
     @Override
     public List<PlatformUser> getPlatformUser() {
-
-        String session = login();
+        String session = zentaoClient.login();;
         HttpHeaders httpHeaders = new HttpHeaders();
-        HttpEntity<MultiValueMap> requestEntity = new HttpEntity<>(httpHeaders);
+        HttpEntity<MultiValueMap<String,String>> requestEntity = new HttpEntity<>(httpHeaders);
         RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> responseEntity = restTemplate.exchange(url + "api-getModel-user-getList?zentaosid=" + session,
+        String getUser = zentaoClient.requestUrl.getUserGet();
+        ResponseEntity<String> responseEntity = restTemplate.exchange(getUser + session,
                 HttpMethod.GET, requestEntity, String.class);
         String body = responseEntity.getBody();
         JSONObject obj = JSONObject.parseObject(body);
@@ -269,32 +326,92 @@ public class ZentaoPlatform extends AbstractIssuePlatform {
         return users;
     }
 
+    @Override
+    public void syncIssues(Project project, List<IssuesDao> issues) {
+        issues.forEach(item -> {
+            IssuesWithBLOBs issue = issuesMapper.selectByPrimaryKey(item.getId());
+            JSONObject bug = zentaoClient.getBugById(item.getPlatformId());
+            issue = getUpdateIssues(issue, bug);
+            issue.setId(item.getId());
+            issuesMapper.updateByPrimaryKeySelective(issue);
+        });
+    }
+
     public List<ZentaoBuild> getBuilds() {
-        String session = login();
-        String projectId = getProjectId();
-        HttpHeaders httpHeaders = new HttpHeaders();
-        HttpEntity<MultiValueMap> requestEntity = new HttpEntity<>(httpHeaders);
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> responseEntity = restTemplate.exchange(url + "api-getModel-build-getProductBuildPairs-productID={projectId}?zentaosid=" + session,
-                HttpMethod.GET, requestEntity, String.class, projectId);
-        String body = responseEntity.getBody();
-        JSONObject obj = JSONObject.parseObject(body);
-
-        LogUtil.info("zentao builds" + obj);
-
-        JSONObject data = obj.getJSONObject("data");
-        Map<String,Object> maps = data.getInnerMap();
-
-        List<ZentaoBuild> list = new ArrayList<>();
-        for (Map.Entry map : maps.entrySet()) {
-            ZentaoBuild build = new ZentaoBuild();
-            String id = (String) map.getKey();
-            if (StringUtils.isNotBlank(id)) {
-                build.setId((String) map.getKey());
-                build.setName((String) map.getValue());
-                list.add(build);
-            }
+        Map<String, Object> builds = zentaoClient.getBuildsByCreateMetaData(getProjectId(projectId));
+        if (builds == null || builds.isEmpty()) {
+            builds = zentaoClient.getBuilds(getProjectId(projectId));
         }
-        return list;
+        List<ZentaoBuild> res = new ArrayList<>();
+        builds.forEach((k, v) -> {
+            if (StringUtils.isNotBlank(k)) {
+                res.add(new ZentaoBuild(k, v.toString()));
+            }
+        });
+        return res;
+    }
+
+    private String uploadFile(FileSystemResource resource) {
+        String id = "";
+        String session = zentaoClient.login();
+        HttpHeaders httpHeaders = new HttpHeaders();
+        MultiValueMap<String, Object> paramMap = new LinkedMultiValueMap<>();
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(paramMap, httpHeaders);
+        paramMap.add("files", resource);
+        RestTemplate restTemplate = new RestTemplate();
+        try {
+            String fileUpload = zentaoClient.requestUrl.getFileUpload();
+            ResponseEntity<String> responseEntity = restTemplate.exchange(fileUpload + session,
+                    HttpMethod.POST, requestEntity, String.class);
+            String body = responseEntity.getBody();
+            JSONObject obj = JSONObject.parseObject(body);
+            JSONObject data = obj.getJSONObject("data");
+            Set<String> set = data.getInnerMap().keySet();
+            if (!set.isEmpty()) {
+                id = (String) set.toArray()[0];
+            }
+        } catch (Exception e) {
+            LogUtil.error(e, e.getMessage());
+        }
+        LogUtil.info("upload file id: " + id);
+        return id;
+    }
+
+    private String ms2ZentaoDescription(String msDescription) {
+        String imgUrlRegex = "!\\[.*?]\\(/resource/md/get(.*?\\..*?)\\)";
+        String zentaoSteps = msDescription.replaceAll(imgUrlRegex, zentaoClient.requestUrl.getReplaceImgUrl());
+        Matcher matcher = zentaoClient.requestUrl.getImgPattern().matcher(zentaoSteps);
+        while (matcher.find()) {
+            // get file name
+            String originSubUrl = matcher.group(1);
+            String fileName = originSubUrl.substring(10);
+            fileName = resourceService.decodeFileName(fileName);
+            // get file
+            ResponseEntity<FileSystemResource> mdImage = resourceService.getMdImage(fileName);
+            // upload zentao
+            String id = uploadFile(mdImage.getBody());
+            // todo delete local file
+            int index = fileName.lastIndexOf(".");
+            String suffix = "";
+            if (index != -1) {
+                suffix = fileName.substring(index);
+            }
+            // replace id
+            zentaoSteps = zentaoSteps.replaceAll(Pattern.quote(originSubUrl), id + suffix);
+        }
+        // image link
+        String netImgRegex = "!\\[(.*?)]\\((http.*?)\\)";
+        return zentaoSteps.replaceAll(netImgRegex, "<img src=\"$2\" alt=\"$1\"/>");
+    }
+
+    private String zentao2MsDescription(String ztDescription) {
+        // todo 图片回显
+        String imgRegex = "<img src.*?/>";
+        return ztDescription.replaceAll(imgRegex, "");
+    }
+
+    @Override
+    public Boolean checkProjectExist(String relateId) {
+        return zentaoClient.checkProjectExist(relateId);
     }
 }

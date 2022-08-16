@@ -1,60 +1,23 @@
 <template>
   <div id="menu-bar" v-if="isRouterAlive">
     <el-row type="flex">
+      <project-change :project-name="currentProject"/>
       <el-col :span="14">
-        <el-menu class="header-menu" :unique-opened="true" mode="horizontal" router :default-active='$route.path'>
-
-          <el-submenu :class="{'deactivation':!isProjectActivation}"
-                      v-permission="['test_manager','test_user','test_viewer']" index="3">
-            <template v-slot:title>{{ $t('commons.project') }}</template>
-            <search-list ref="projectRecent" :options="projectRecent"/>
-            <el-divider class="menu-divider"/>
-            <el-menu-item :index="'/setting/project/create'">
-              <font-awesome-icon :icon="['fa', 'plus']"/>
-              <span style="padding-left: 7px;">{{ $t("project.create") }}</span>
-            </el-menu-item>
-            <ms-show-all :index="'/setting/project/all'"/>
-          </el-submenu>
+        <el-menu class="header-menu" :unique-opened="true" mode="horizontal" router :default-active='currentPath'>
 
           <el-menu-item :index="'/api/home'">
             {{ $t("i18n.home") }}
           </el-menu-item>
-
-          <el-menu-item v-show="$store.state.switch.value=='new'" :index="'/api/definition'">
+          <el-menu-item :index="'/api/definition'" v-permission="['PROJECT_API_DEFINITION:READ']">
             {{ $t("i18n.definition") }}
           </el-menu-item>
 
-          <el-menu-item v-show="$store.state.switch.value=='new'" :index="'/api/automation'">
+          <el-menu-item :index="'/api/automation'" v-permission="['PROJECT_API_SCENARIO:READ']">
             {{ $t("i18n.automation") }}
           </el-menu-item>
 
-          <el-menu-item v-show="$store.state.switch.value=='new'" :index="'/api/automation/report'">
+          <el-menu-item :index="'/api/automation/report'" v-permission="['PROJECT_API_REPORT:READ']">
             {{ $t("i18n.report") }}
-          </el-menu-item>
-
-          <el-submenu v-show="$store.state.switch.value=='old'"
-                      v-permission="['test_manager','test_user','test_viewer']" index="4">
-            <template v-slot:title>{{ $t('commons.test') }}</template>
-            <ms-recent-list ref="testRecent" :options="testRecent"/>
-            <el-divider class="menu-divider"/>
-            <ms-show-all :index="'/api/test/list/all'"/>
-            <el-menu-item :index="apiTestProjectPath" class="blank_item"></el-menu-item>
-            <ms-create-button v-permission="['test_manager','test_user']" :index="'/api/test/create'"
-                              :title="$t('load_test.create')"/>
-          </el-submenu>
-
-          <el-submenu v-show="$store.state.switch.value=='old'"
-                      v-permission="['test_manager','test_user','test_viewer']" index="5">
-            <template v-slot:title>{{ $t('commons.report') }}</template>
-            <ms-recent-list ref="reportRecent" :options="reportRecent"/>
-            <el-divider class="menu-divider"/>
-            <ms-show-all :index="'/api/report/list/all'"/>
-          </el-submenu>
-
-
-          <el-menu-item v-show="$store.state.switch.value=='old'"
-                        v-permission="['test_manager','test_user','test_viewer']" :index="'/api/monitor/view'">
-            {{ $t('commons.monitor') }}
           </el-menu-item>
         </el-menu>
       </el-col>
@@ -68,25 +31,15 @@
 import MsRecentList from "../../common/head/RecentList";
 import MsShowAll from "../../common/head/ShowAll";
 import MsCreateButton from "../../common/head/CreateButton";
-import MsCreateTest from "../../common/head/CreateTest";
-import {ApiEvent, LIST_CHANGE} from "@/business/components/common/head/ListEvent";
-import SearchList from "@/business/components/common/head/SearchList";
+import ProjectChange from "@/business/components/common/head/ProjectSwitch";
+import {mapGetters} from "vuex";
 
 export default {
   name: "MsApiHeaderMenus",
-  components: {SearchList, MsCreateTest, MsCreateButton, MsShowAll, MsRecentList},
+  components: {MsCreateButton, MsShowAll, MsRecentList, ProjectChange},
   data() {
     return {
-      projectRecent: {
-        title: this.$t('project.recent'),
-        url: "/project/recent/5",
-        index: function (item) {
-          return '/api/test/list/' + item.id;
-        },
-        router: function (item) {
-          return {name: 'ApiTestList', params: {projectId: item.id, projectName: item.name}}
-        }
-      },
+      currentPath: '',
       testRecent: {
         title: this.$t('load_test.recent'),
         url: "/api/recent/5",
@@ -94,7 +47,7 @@ export default {
           return '/api/test/edit/' + item.id;
         },
         router: function (item) {
-          return {path: '/api/test/edit', query: {id: item.id}}
+          return {path: '/api/test/edit', query: {id: item.id}};
         }
       },
       reportRecent: {
@@ -108,47 +61,36 @@ export default {
       isProjectActivation: true,
       isRouterAlive: true,
       apiTestProjectPath: '',
+      currentProject: ''
+    };
+  },
+  watch: {
+    '$route': {
+      immediate: true,
+      handler(to) {
+        let path = to.path.split("/", 4);
+        this.currentPath = '/' + path[1] + '/' + path[2];
+        if (path[3] === "report") {
+          this.currentPath = this.currentPath + '/' + path[3];
+        }
+      }
     }
   },
-  // watch: {
-  //   '$route'(to) {
-  //     this.init();
-  //   },
-  // },
   methods: {
-    registerEvents() {
-      ApiEvent.$on(LIST_CHANGE, () => {
-        // todo 这里偶尔会有 refs 为空的情况
-        if (!this.$refs.projectRecent) {
-          return;
-        }
-        this.$refs.projectRecent.recent();
-        this.$refs.testRecent.recent();
-        this.$refs.reportRecent.recent();
-      });
-    },
     reload() {
       this.isRouterAlive = false;
       this.$nextTick(function () {
         this.isRouterAlive = true;
       });
     },
-    // init() {
-    //   let path = this.$route.path;
-    //   if (path.indexOf("/api/test/list") >= 0 && !!this.$route.params.projectId) {
-    //     this.apiTestProjectPath = path;
-    //     //不激活项目菜单栏
-    //     this.isProjectActivation = false;
-    //     this.reload();
-    //   } else {
-    //     this.isProjectActivation = true;
-    //   }
-    // },
   },
   mounted() {
-    this.registerEvents();
+
+  },
+  beforeDestroy() {
+
   }
-}
+};
 
 </script>
 

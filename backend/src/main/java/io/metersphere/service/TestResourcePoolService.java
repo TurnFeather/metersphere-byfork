@@ -1,26 +1,30 @@
 package io.metersphere.service;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.LoadTestMapper;
 import io.metersphere.base.mapper.TestResourceMapper;
 import io.metersphere.base.mapper.TestResourcePoolMapper;
-import io.metersphere.commons.constants.ResourceStatusEnum;
+import io.metersphere.base.mapper.ext.ExtTaskMapper;
+import io.metersphere.commons.constants.PerformanceTestStatus;
+import io.metersphere.commons.constants.ResourcePoolTypeEnum;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.controller.request.resourcepool.QueryResourcePoolRequest;
-import io.metersphere.dto.NodeDTO;
 import io.metersphere.dto.TestResourcePoolDTO;
+import io.metersphere.dto.UpdatePoolDTO;
 import io.metersphere.i18n.Translator;
+import io.metersphere.log.utils.ReflexObjectUtil;
+import io.metersphere.log.vo.DetailColumn;
+import io.metersphere.log.vo.OperatingLogDetails;
+import io.metersphere.log.vo.system.SystemReference;
 import org.apache.commons.beanutils.BeanUtils;
-import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.Resource;
 import java.lang.reflect.InvocationTargetException;
@@ -30,8 +34,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static io.metersphere.commons.constants.ResourceStatusEnum.INVALID;
-import static io.metersphere.commons.constants.ResourceStatusEnum.VALID;
+import static io.metersphere.commons.constants.ResourceStatusEnum.*;
 
 /**
  * @author dongbin
@@ -40,16 +43,16 @@ import static io.metersphere.commons.constants.ResourceStatusEnum.VALID;
 @Transactional(rollbackFor = Exception.class)
 public class TestResourcePoolService {
 
-    private final static String nodeControllerUrl = "http://%s:%s/status";
-
     @Resource
     private TestResourcePoolMapper testResourcePoolMapper;
     @Resource
     private TestResourceMapper testResourceMapper;
     @Resource
-    private RestTemplate restTemplateWithTimeOut;
+    private NodeResourcePoolService nodeResourcePoolService;
     @Resource
     private LoadTestMapper loadTestMapper;
+    @Resource
+    private ExtTaskMapper extTaskMapper;
 
     public TestResourcePoolDTO addTestResourcePool(TestResourcePoolDTO testResourcePool) {
         checkTestResourcePool(testResourcePool);
@@ -63,25 +66,7 @@ public class TestResourcePoolService {
     }
 
     public void deleteTestResourcePool(String testResourcePoolId) {
-        // check test is Running Starting Error
-        checkTestStatus(testResourcePoolId);
-        deleteTestResource(testResourcePoolId);
-        testResourcePoolMapper.deleteByPrimaryKey(testResourcePoolId);
-    }
-
-    public void checkTestStatus(String testResourcePoolId) {
-        LoadTestExample example = new LoadTestExample();
-        example.createCriteria()
-                .andTestResourcePoolIdEqualTo(testResourcePoolId);
-        List<LoadTest> loadTests = loadTestMapper.selectByExample(example);
-        StringBuilder loadTestNames = new StringBuilder();
-        if (loadTests.size() > 0) {
-            for (LoadTest loadTest : loadTests) {
-                loadTestNames = loadTestNames.append(loadTest.getName()).append(",");
-            }
-            String str = loadTestNames.substring(0, loadTestNames.length() - 1);
-            MSException.throwException(Translator.get("load_test") + " " + str + " " + Translator.get("test_resource_pool_is_use"));
-        }
+        updateTestResourcePoolStatus(testResourcePoolId, DELETE.name());
     }
 
     public void updateTestResourcePool(TestResourcePoolDTO testResourcePool) {
@@ -103,6 +88,7 @@ public class TestResourcePoolService {
         if (StringUtils.isNotBlank(testResourcePoolDTO.getId())) {
             criteria.andIdNotEqualTo(testResourcePoolDTO.getId());
         }
+        criteria.andStatusNotEqualTo(DELETE.name());
 
         if (testResourcePoolMapper.countByExample(example) > 0) {
             MSException.throwException(Translator.get("test_resource_pool_name_already_exists"));
@@ -117,8 +103,8 @@ public class TestResourcePoolService {
         }
         testResourcePool.setUpdateTime(System.currentTimeMillis());
         testResourcePool.setStatus(status);
-        // 禁用资源池
-        if (INVALID.name().equals(status)) {
+        // 禁用/删除 资源池
+        if (INVALID.name().equals(status) || DELETE.name().equals(status)) {
             testResourcePoolMapper.updateByPrimaryKeySelective(testResourcePool);
             return;
         }
@@ -139,6 +125,39 @@ public class TestResourcePoolService {
         }
     }
 
+    /**
+     * 禁用资源池时，检查是否有测试正在使用
+     *
+     * @param poolId 资源池ID
+     * @return UpdatePoolDTO
+     */
+    public UpdatePoolDTO checkHaveTestUsePool(String poolId) {
+        TestResourcePool testResourcePool = testResourcePoolMapper.selectByPrimaryKey(poolId);
+        if (testResourcePool == null) {
+            MSException.throwException("Resource Pool not found.");
+        }
+        UpdatePoolDTO result = new UpdatePoolDTO();
+        StringBuilder builder = new StringBuilder();
+        LoadTestExample loadTestExample = new LoadTestExample();
+        loadTestExample.createCriteria().andTestResourcePoolIdEqualTo(poolId);
+        List<LoadTest> loadTests = loadTestMapper.selectByExample(loadTestExample);
+        if (CollectionUtils.isNotEmpty(loadTests)) {
+            loadTests.forEach(loadTest -> {
+                String testStatus = loadTest.getStatus();
+                if (StringUtils.equalsAny(testStatus, PerformanceTestStatus.Starting.name(),
+                        PerformanceTestStatus.Running.name(), PerformanceTestStatus.Reporting.name())) {
+                    builder.append(loadTest.getName()).append("; ");
+                    result.setHaveTestUsePool(true);
+                }
+            });
+        }
+        // api
+        List<String> apiNames = extTaskMapper.checkActuator(testResourcePool.getId());
+        builder.append(StringUtils.join(apiNames, "; "));
+        result.setTestName(builder.toString());
+        return result;
+    }
+
     public List<TestResourcePoolDTO> listResourcePools(QueryResourcePoolRequest request) {
         TestResourcePoolExample example = new TestResourcePoolExample();
         TestResourcePoolExample.Criteria criteria = example.createCriteria();
@@ -148,6 +167,7 @@ public class TestResourcePoolService {
         if (StringUtils.isNotBlank(request.getStatus())) {
             criteria.andStatusEqualTo(request.getStatus());
         }
+        criteria.andStatusNotEqualTo(DELETE.name());
         example.setOrderByClause("update_time desc");
         List<TestResourcePool> testResourcePools = testResourcePoolMapper.selectByExample(example);
         List<TestResourcePoolDTO> testResourcePoolDTOS = new ArrayList<>();
@@ -168,61 +188,14 @@ public class TestResourcePoolService {
     }
 
     private boolean validateTestResourcePool(TestResourcePoolDTO testResourcePool) {
-        return validateNodes(testResourcePool);
-    }
-
-    private boolean validateNodes(TestResourcePoolDTO testResourcePool) {
-        if (CollectionUtils.isEmpty(testResourcePool.getResources())) {
-            MSException.throwException(Translator.get("no_nodes_message"));
-        }
-
-        deleteTestResource(testResourcePool.getId());
-        List<String> nodeIps = testResourcePool.getResources().stream()
-                .map(resource -> {
-                    NodeDTO nodeDTO = JSON.parseObject(resource.getConfiguration(), NodeDTO.class);
-                    return nodeDTO.getIp();
-                })
-                .distinct()
-                .collect(Collectors.toList());
-        if (nodeIps.size() < testResourcePool.getResources().size()) {
-            MSException.throwException(Translator.get("duplicate_node_ip"));
-        }
-        testResourcePool.setStatus(VALID.name());
-        boolean isValid = true;
-        for (TestResource resource : testResourcePool.getResources()) {
-            NodeDTO nodeDTO = JSON.parseObject(resource.getConfiguration(), NodeDTO.class);
-            boolean isValidate = validateNode(nodeDTO);
-            if (!isValidate) {
-                testResourcePool.setStatus(ResourceStatusEnum.INVALID.name());
-                resource.setStatus(ResourceStatusEnum.INVALID.name());
-                isValid = false;
-            } else {
-                resource.setStatus(VALID.name());
+        if (StringUtils.equalsIgnoreCase(testResourcePool.getType(), ResourcePoolTypeEnum.K8S.name())) {
+            KubernetesResourcePoolService resourcePoolService = CommonBeanFactory.getBean(KubernetesResourcePoolService.class);
+            if (resourcePoolService == null) {
+                return false;
             }
-            resource.setTestResourcePoolId(testResourcePool.getId());
-            updateTestResource(resource);
+            return resourcePoolService.validate(testResourcePool);
         }
-        return isValid;
-    }
-
-    private boolean validateNode(NodeDTO node) {
-        try {
-            ResponseEntity<String> entity = restTemplateWithTimeOut.getForEntity(String.format(nodeControllerUrl, node.getIp(), node.getPort()), String.class);
-            return HttpStatus.OK.equals(entity.getStatusCode());
-        } catch (Exception e) {
-            LogUtil.error(e.getMessage(), e);
-            return false;
-        }
-    }
-
-    private void updateTestResource(TestResource testResource) {
-        testResource.setUpdateTime(System.currentTimeMillis());
-        testResource.setCreateTime(System.currentTimeMillis());
-        if (StringUtils.isBlank(testResource.getId())) {
-            testResource.setId(UUID.randomUUID().toString());
-        }
-        // 如果是更新操作，插入与原来的ID相同的数据
-        testResourceMapper.insertSelective(testResource);
+        return nodeResourcePoolService.validate(testResourcePool);
     }
 
     private void deleteTestResource(String testResourcePoolId) {
@@ -245,8 +218,9 @@ public class TestResourcePoolService {
                 continue;
             }
             try {
-                updateTestResourcePool(pool);
-            } catch (MSException e) {
+                validateTestResourcePool(pool);
+            } catch (Exception e) {
+                LogUtil.error(e.getMessage(), e);
                 pool.setStatus(INVALID.name());
                 pool.setUpdateTime(System.currentTimeMillis());
                 testResourcePoolMapper.updateByPrimaryKeySelective(pool);
@@ -271,4 +245,47 @@ public class TestResourcePoolService {
         return list;
     }
 
+    public String getLogDetails(String id) {
+        TestResourcePool pool = testResourcePoolMapper.selectByPrimaryKey(id);
+        if (pool != null) {
+            TestResourceExample example = new TestResourceExample();
+            example.createCriteria().andTestResourcePoolIdEqualTo(pool.getId());
+            List<TestResource> resources = testResourceMapper.selectByExampleWithBLOBs(example);
+            List<DetailColumn> columns = ReflexObjectUtil.getColumns(pool, SystemReference.poolColumns);
+            if (pool.getType().equals("NODE")) {
+                for (TestResource resource : resources) {
+                    JSONObject object = JSONObject.parseObject(resource.getConfiguration());
+                    DetailColumn ip = new DetailColumn("IP", "ip", object.get("ip"), null);
+                    columns.add(ip);
+                    DetailColumn port = new DetailColumn("Port", "port", object.get("port"), null);
+                    columns.add(port);
+                    DetailColumn monitorPort = new DetailColumn("Monitor", "monitorPort", object.get("monitorPort"), null);
+                    columns.add(monitorPort);
+                    DetailColumn maxConcurrency = new DetailColumn("最大并发数", "maxConcurrency", object.get("maxConcurrency"), null);
+                    columns.add(maxConcurrency);
+                }
+            } else {
+                if (CollectionUtils.isNotEmpty(resources)) {
+                    TestResource resource = resources.get(0);
+                    JSONObject object = JSONObject.parseObject(resource.getConfiguration());
+                    DetailColumn masterUrl = new DetailColumn("Master Url", "masterUrl", object.get("masterUrl"), null);
+                    columns.add(masterUrl);
+                    DetailColumn token = new DetailColumn("Token", "token", object.get("token"), null);
+                    columns.add(token);
+                    DetailColumn monitorPort = new DetailColumn("Namespace", "namespace", object.get("namespace"), null);
+                    columns.add(monitorPort);
+                    DetailColumn maxConcurrency = new DetailColumn("最大并发数", "maxConcurrency", object.get("maxConcurrency"), null);
+                    columns.add(maxConcurrency);
+                    DetailColumn podThreadLimit = new DetailColumn("单POD最大线程数", "podThreadLimit", object.get("podThreadLimit"), null);
+                    columns.add(podThreadLimit);
+                    DetailColumn nodeSelector = new DetailColumn("nodeSelector", "nodeSelector", object.get("nodeSelector"), null);
+                    columns.add(nodeSelector);
+                }
+            }
+
+            OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(pool.getId()), null, pool.getName(), pool.getCreateUser(), columns);
+            return JSON.toJSONString(details);
+        }
+        return null;
+    }
 }

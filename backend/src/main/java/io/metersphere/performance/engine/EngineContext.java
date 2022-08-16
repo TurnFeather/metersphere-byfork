@@ -8,15 +8,15 @@ public class EngineContext {
     private String testName;
     private String namespace;
     private String fileType;
-    private String content;
+    private byte[] content;
     private String resourcePoolId;
-    private Long startTime;
     private String reportId;
     private Integer resourceIndex;
+    private double[] ratios;
     private Map<String, Object> properties = new HashMap<>();
-    private Map<String, String> testData = new HashMap<>();
-    private Map<String, String> env = new HashMap<>();
-    private Map<String, byte[]> testJars = new HashMap<>();
+    private Map<String, byte[]> testResourceFiles = new HashMap<>();
+    private Map<String, Boolean> splitFlag = new HashMap<>();
+    private boolean checkBackendListener;
 
     public String getTestId() {
         return testId;
@@ -50,23 +50,15 @@ public class EngineContext {
         this.properties.putAll(props);
     }
 
-    public Map<String, String> getEnv() {
-        return env;
-    }
-
-    public void setEnv(Map<String, String> env) {
-        this.env = env;
-    }
-
     public Object getProperty(String key) {
         return this.properties.get(key);
     }
 
-    public String getContent() {
+    public byte[] getContent() {
         return content;
     }
 
-    public void setContent(String content) {
+    public void setContent(byte[] content) {
         this.content = content;
     }
 
@@ -78,28 +70,12 @@ public class EngineContext {
         this.fileType = fileType;
     }
 
-    public Map<String, String> getTestData() {
-        return testData;
-    }
-
-    public void setTestData(Map<String, String> testData) {
-        this.testData = testData;
-    }
-
     public String getResourcePoolId() {
         return resourcePoolId;
     }
 
     public void setResourcePoolId(String resourcePoolId) {
         this.resourcePoolId = resourcePoolId;
-    }
-
-    public Long getStartTime() {
-        return startTime;
-    }
-
-    public void setStartTime(Long startTime) {
-        this.startTime = startTime;
     }
 
     public String getReportId() {
@@ -119,12 +95,35 @@ public class EngineContext {
         this.resourceIndex = resourceIndex;
     }
 
-
-    public Map<String, byte[]> getTestJars() {
-        return testJars;
+    public double[] getRatios() {
+        return ratios;
     }
 
-    public void setTestJars(Map<String, byte[]> testJars) {
-        this.testJars = testJars;
+    public void setRatios(double[] ratios) {
+        this.ratios = ratios;
+    }
+
+    public Map<String, byte[]> getTestResourceFiles() {
+        return testResourceFiles;
+    }
+
+    public void setTestResourceFiles(Map<String, byte[]> testResourceFiles) {
+        this.testResourceFiles = testResourceFiles;
+    }
+
+    public Map<String, Boolean> getSplitFlag() {
+        return splitFlag;
+    }
+
+    public void setSplitFlag(Map<String, Boolean> splitFlag) {
+        this.splitFlag = splitFlag;
+    }
+
+    public boolean isCheckBackendListener() {
+        return checkBackendListener;
+    }
+
+    public void setCheckBackendListener(boolean checkBackendListener) {
+        this.checkBackendListener = checkBackendListener;
     }
 }

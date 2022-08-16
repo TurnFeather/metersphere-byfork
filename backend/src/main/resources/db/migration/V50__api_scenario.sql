@@ -16,14 +16,14 @@ CREATE TABLE `api_scenario` (
   `follow_people` varchar(100) DEFAULT NULL COMMENT 'api scenario Follow people ',
   `schedule` varchar(255) DEFAULT NULL COMMENT 'Test schedule (cron list)',
   `scenario_definition` longtext COMMENT 'Test scenario_definition json',
-  `description` varchar(255) DEFAULT NULL COMMENT 'api scenario description',
+  `description` longtext DEFAULT NULL COMMENT 'api scenario description',
   `create_time` bigint(13) NOT NULL COMMENT 'Create timestamp',
   `update_time` bigint(13) NOT NULL COMMENT 'Update timestamp',
   `pass_rate` varchar(100) DEFAULT NULL,
   `last_result` varchar(100) DEFAULT NULL,
   `report_id` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE utf8mb4_general_ci;
 
 
 CREATE TABLE `api_scenario_module` (
@@ -32,38 +32,30 @@ CREATE TABLE `api_scenario_module` (
   `name` varchar(64) NOT NULL COMMENT 'Node name',
   `parent_id` varchar(50) DEFAULT NULL COMMENT 'Parent node ID',
   `level` int(10) DEFAULT '1' COMMENT 'Node level',
+  `pos` double DEFAULT NULL COMMENT 'Node order',
   `create_time` bigint(13) NOT NULL COMMENT 'Create timestamp',
   `update_time` bigint(13) NOT NULL COMMENT 'Update timestamp',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE utf8mb4_general_ci;
 
 
 CREATE TABLE `api_scenario_report` (
   `id` varchar(50) NOT NULL COMMENT 'Test report ID',
   `project_id` varchar(50) NOT NULL COMMENT 'scenario ID this test report belongs to',
   `name` varchar(64) NOT NULL COMMENT 'Test report name',
-  `description` varchar(255) DEFAULT NULL COMMENT 'Test report name',
+  `description` longtext DEFAULT NULL COMMENT 'Test report name',
   `create_time` bigint(13) NOT NULL COMMENT 'Create timestamp',
   `update_time` bigint(13) NOT NULL COMMENT 'Update timestamp',
   `status` varchar(64) NOT NULL COMMENT 'Status of this test run',
   `user_id` varchar(64) DEFAULT NULL,
   `trigger_mode` varchar(64) DEFAULT NULL,
+  `execute_type` varchar(200) NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE utf8mb4_general_ci;
 
 CREATE TABLE `api_scenario_report_detail` (
   `report_id` varchar(64) NOT NULL COMMENT 'API Test Report ID',
   `project_id` varchar(64) NOT NULL COMMENT 'scenario ID',
   `content` longblob COMMENT 'Report Content',
   PRIMARY KEY (`report_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE `api_tag` (
-  `id` varchar(50) NOT NULL COMMENT 'Test ID',
-  `project_id` varchar(50) NOT NULL COMMENT 'Project ID this test belongs to',
-  `name` varchar(200) NOT NULL COMMENT 'api tag',
-  `user_id` varchar(64) DEFAULT NULL COMMENT 'User ID',
-  `create_time` bigint(13) NOT NULL COMMENT 'Create timestamp',
-  `update_time` bigint(13) NOT NULL COMMENT 'Update timestamp',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE utf8mb4_general_ci;

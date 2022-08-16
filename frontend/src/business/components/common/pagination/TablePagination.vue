@@ -2,6 +2,7 @@
   <el-row type="flex" justify="end">
     <div class="table-page">
       <el-pagination
+        background
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
         :current-page="currentPage"
@@ -54,6 +55,6 @@
 
 <style scoped>
   .table-page {
-    padding-top: 20px;
+    padding-top: 10px;
   }
 </style>

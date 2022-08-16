@@ -3,21 +3,21 @@
     <el-table :data="hostTable" style="width: 100%" @cell-dblclick="dblHostTable" class="ht-tb">
       <el-table-column prop="ip" label="IP">
         <template slot-scope="scope">
-          <el-input v-if="scope.row.status" v-model="scope.row.ip"></el-input>
+          <el-input size="small" v-if="scope.row.status" v-model="scope.row.ip"></el-input>
           <span v-else>{{scope.row.ip}}</span>
         </template>
       </el-table-column>
 
       <el-table-column prop="domain" :label="$t('load_test.domain')">
         <template slot-scope="scope">
-          <el-input v-if="scope.row.status" v-model="scope.row.domain"></el-input>
+          <el-input size="small" v-if="scope.row.status" v-model="scope.row.domain"></el-input>
           <span v-else>{{scope.row.domain}}</span>
         </template>
       </el-table-column>
 
       <el-table-column prop="annotation" :label="$t('commons.annotation')">
         <template slot-scope="scope">
-          <el-input v-if="scope.row.status" v-model="scope.row.annotation"></el-input>
+          <el-input size="small" v-if="scope.row.status" v-model="scope.row.annotation"></el-input>
           <span v-else>{{scope.row.annotation}}</span>
         </template>
       </el-table-column>
@@ -27,7 +27,7 @@
           <span>
             <el-button size="mini" p="$t('commons.remove')" icon="el-icon-close" circle @click="remove(scope.row)"
                        class="ht-btn-remove"/>
-            <el-button size="mini" p="$t('commons.save')" icon="el-icon-check" circle @click="confirm(scope.row)"
+            <el-button size="mini" p="$t('commons.save')" icon="el-icon-check" type="primary" circle @click="confirm(scope.row)"
                        class="ht-btn-confirm"/>
           </span>
         </template>
@@ -35,8 +35,8 @@
       </el-table-column>
     </el-table>
 
-    <el-button class="ht-btn-add" size="mini" p="$t('commons.add')" icon="el-icon-circle-plus-outline" @click="add">添加
-    </el-button>
+    <el-button class="ht-btn-add" size="mini" p="$t('commons.add')" icon="el-icon-circle-plus-outline" @click="add">{{$t("commons.add")}}</el-button>
+    <el-button class="ht-btn-add" size="mini" p="$t('commons.add')" icon="el-icon-files" @click="copy">{{$t("commons.copy")}}</el-button>
   </div>
 </template>
 
@@ -68,6 +68,16 @@
         this.$emit('change', this.hostTable);
       },
       add: function (r) {
+        let row = {
+          ip: '',
+          domain: '',
+          status: 'edit',
+          annotation: '',
+          uuid: this.uuid(),
+        }
+        this.hostTable.push(row);
+      },
+      copy: function (r) {
         let row = {
           ip: '',
           domain: '',
@@ -143,13 +153,13 @@
 
   .ht-btn-confirm {
     color: white;
-    background-color: #1483F6;
+    /*background-color: #1483F6;*/
   }
 
   .ht-btn-add {
     border: 0px;
     margin-top: 10px;
-    color: #1483F6;
+    color: #783887;
     background-color: white;
   }
 

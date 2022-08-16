@@ -4,24 +4,23 @@
 
       <span>{{$t('api_test.environment.name')}}</span>
       <el-form-item prop="name">
-        <el-input v-model="environment.name" :placeholder="this.$t('commons.input_name')" clearable/>
+        <el-input v-model="environment.name" :disabled="isReadOnly" :placeholder="this.$t('commons.input_name')" clearable/>
       </el-form-item>
 
 
       <el-tabs v-model="activeName">
-
         <el-tab-pane :label="$t('api_test.environment.common_config')" name="common">
-          <ms-environment-common-config :common-config="environment.config.commonConfig" ref="commonConfig"/>
+          <ms-environment-common-config :common-config="environment.config.commonConfig" ref="commonConfig" :is-read-only="isReadOnly"/>
         </el-tab-pane>
 
         <el-tab-pane :label="$t('api_test.environment.http_config')" name="http">
-          <ms-environment-http-config :http-config="environment.config.httpConfig" ref="httpConfig"/>
+          <ms-environment-http-config :http-config="environment.config.httpConfig" ref="httpConfig" :is-read-only="isReadOnly"/>
         </el-tab-pane>
         <el-tab-pane :label="$t('api_test.environment.database_config')" name="sql">
-          <ms-database-config :configs="environment.config.databaseConfigs"/>
+          <ms-database-config :configs="environment.config.databaseConfigs" :is-read-only="isReadOnly"/>
         </el-tab-pane>
         <el-tab-pane :label="$t('api_test.environment.tcp_config')" name="tcp">
-          <ms-tcp-config :config="environment.config.tcpConfig"/>
+          <environment-tcp-config :config="environment.config.tcpConfig" :is-read-only="isReadOnly"/>
         </el-tab-pane>
       </el-tabs>
 
@@ -42,19 +41,23 @@
   import {Environment} from "../../model/EnvironmentModel";
   import MsApiHostTable from "./ApiHostTable";
   import MsDatabaseConfig from "../request/database/DatabaseConfig";
-  import MsEnvironmentHttpConfig from "./EnvironmentHttpConfig";
+  import MsEnvironmentHttpConfig from "../../../test/components/environment/EnvironmentHttpConfig";
   import MsEnvironmentCommonConfig from "./EnvironmentCommonConfig";
-  import MsTcpConfig from "../request/tcp/TcpConfig";
+  import EnvironmentTcpConfig from "./EnvironmentTcpConfig";
 
   export default {
     name: "EnvironmentEdit",
     components: {
-      MsTcpConfig,
+      EnvironmentTcpConfig,
       MsEnvironmentCommonConfig,
       MsEnvironmentHttpConfig,
       MsDatabaseConfig, MsApiHostTable, MsDialogFooter, MsApiKeyValue, MsApiScenarioVariables},
     props: {
       environment: new Environment(),
+      isReadOnly: {
+        type: Boolean,
+        default: false
+      },
     },
     data() {
 
@@ -101,7 +104,7 @@
         if (param.id) {
           url = '/api/environment/update';
         }
-        this.result = this.$post(url, param, response => {
+        this.result = this.$fileUpload(url, null, [], param, response => {
           if (!param.id) {
             environment.id = response.data;
           }

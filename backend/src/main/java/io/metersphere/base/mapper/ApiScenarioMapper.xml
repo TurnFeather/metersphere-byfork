@@ -4,7 +4,7 @@
   <resultMap id="BaseResultMap" type="io.metersphere.base.domain.ApiScenario">
     <id column="id" jdbcType="VARCHAR" property="id" />
     <result column="project_id" jdbcType="VARCHAR" property="projectId" />
-    <result column="tag_id" jdbcType="VARCHAR" property="tagId" />
+    <result column="tags" jdbcType="VARCHAR" property="tags" />
     <result column="user_id" jdbcType="VARCHAR" property="userId" />
     <result column="api_scenario_module_id" jdbcType="VARCHAR" property="apiScenarioModuleId" />
     <result column="module_path" jdbcType="VARCHAR" property="modulePath" />
@@ -13,17 +13,32 @@
     <result column="status" jdbcType="VARCHAR" property="status" />
     <result column="principal" jdbcType="VARCHAR" property="principal" />
     <result column="step_total" jdbcType="INTEGER" property="stepTotal" />
-    <result column="follow_people" jdbcType="VARCHAR" property="followPeople" />
     <result column="schedule" jdbcType="VARCHAR" property="schedule" />
-    <result column="description" jdbcType="VARCHAR" property="description" />
     <result column="create_time" jdbcType="BIGINT" property="createTime" />
     <result column="update_time" jdbcType="BIGINT" property="updateTime" />
     <result column="pass_rate" jdbcType="VARCHAR" property="passRate" />
     <result column="last_result" jdbcType="VARCHAR" property="lastResult" />
     <result column="report_id" jdbcType="VARCHAR" property="reportId" />
+    <result column="num" jdbcType="INTEGER" property="num" />
+    <result column="original_state" jdbcType="VARCHAR" property="originalState" />
+    <result column="custom_num" jdbcType="VARCHAR" property="customNum" />
+    <result column="create_user" jdbcType="VARCHAR" property="createUser" />
+    <result column="version" jdbcType="INTEGER" property="version" />
+    <result column="delete_time" jdbcType="BIGINT" property="deleteTime" />
+    <result column="delete_user_id" jdbcType="VARCHAR" property="deleteUserId" />
+    <result column="execute_times" jdbcType="INTEGER" property="executeTimes" />
+    <result column="order" jdbcType="BIGINT" property="order" />
+    <result column="environment_type" jdbcType="VARCHAR" property="environmentType" />
+    <result column="environment_group_id" jdbcType="VARCHAR" property="environmentGroupId" />
+    <result column="version_id" jdbcType="VARCHAR" property="versionId" />
+    <result column="ref_id" jdbcType="VARCHAR" property="refId" />
+    <result column="latest" jdbcType="BIT" property="latest" />
   </resultMap>
-  <resultMap extends="BaseResultMap" id="ResultMapWithBLOBs" type="io.metersphere.base.domain.ApiScenario">
+  <resultMap extends="BaseResultMap" id="ResultMapWithBLOBs" type="io.metersphere.base.domain.ApiScenarioWithBLOBs">
     <result column="scenario_definition" jdbcType="LONGVARCHAR" property="scenarioDefinition" />
+    <result column="description" jdbcType="LONGVARCHAR" property="description" />
+    <result column="use_url" jdbcType="LONGVARCHAR" property="useUrl" />
+    <result column="environment_json" jdbcType="LONGVARCHAR" property="environmentJson" />
   </resultMap>
   <sql id="Example_Where_Clause">
     <where>
@@ -84,12 +99,14 @@
     </where>
   </sql>
   <sql id="Base_Column_List">
-    id, project_id, tag_id, user_id, api_scenario_module_id, module_path, `name`, `level`, 
-    `status`, principal, step_total, follow_people, schedule, description, create_time, 
-    update_time, pass_rate, last_result, report_id
+    id, project_id, tags, user_id, api_scenario_module_id, module_path, `name`, `level`, 
+    `status`, principal, step_total, schedule, create_time, update_time, pass_rate, last_result, 
+    report_id, num, original_state, custom_num, create_user, version, delete_time, delete_user_id, 
+    execute_times, `order`, environment_type, environment_group_id, version_id, ref_id, 
+    latest
   </sql>
   <sql id="Blob_Column_List">
-    scenario_definition
+    scenario_definition, description, use_url, environment_json
   </sql>
   <select id="selectByExampleWithBLOBs" parameterType="io.metersphere.base.domain.ApiScenarioExample" resultMap="ResultMapWithBLOBs">
     select
@@ -139,23 +156,33 @@
       <include refid="Example_Where_Clause" />
     </if>
   </delete>
-  <insert id="insert" parameterType="io.metersphere.base.domain.ApiScenario">
-    insert into api_scenario (id, project_id, tag_id, 
+  <insert id="insert" parameterType="io.metersphere.base.domain.ApiScenarioWithBLOBs">
+    INSERT INTO api_scenario (id, project_id, tags,
       user_id, api_scenario_module_id, module_path, 
       `name`, `level`, `status`, 
-      principal, step_total, follow_people, 
-      schedule, description, create_time, 
-      update_time, pass_rate, last_result, 
-      report_id, scenario_definition)
-    values (#{id,jdbcType=VARCHAR}, #{projectId,jdbcType=VARCHAR}, #{tagId,jdbcType=VARCHAR}, 
+      principal, step_total, schedule, 
+      create_time, update_time, pass_rate, 
+      last_result, report_id, num, 
+      original_state, custom_num, create_user, 
+      version, delete_time, delete_user_id, 
+      execute_times, `order`, environment_type, 
+      environment_group_id, version_id, ref_id, 
+      latest, scenario_definition, description, 
+      use_url, environment_json)
+    VALUES (#{id,jdbcType=VARCHAR}, #{projectId,jdbcType=VARCHAR}, #{tags,jdbcType=VARCHAR},
       #{userId,jdbcType=VARCHAR}, #{apiScenarioModuleId,jdbcType=VARCHAR}, #{modulePath,jdbcType=VARCHAR}, 
       #{name,jdbcType=VARCHAR}, #{level,jdbcType=VARCHAR}, #{status,jdbcType=VARCHAR}, 
-      #{principal,jdbcType=VARCHAR}, #{stepTotal,jdbcType=INTEGER}, #{followPeople,jdbcType=VARCHAR}, 
-      #{schedule,jdbcType=VARCHAR}, #{description,jdbcType=VARCHAR}, #{createTime,jdbcType=BIGINT}, 
-      #{updateTime,jdbcType=BIGINT}, #{passRate,jdbcType=VARCHAR}, #{lastResult,jdbcType=VARCHAR}, 
-      #{reportId,jdbcType=VARCHAR}, #{scenarioDefinition,jdbcType=LONGVARCHAR})
+      #{principal,jdbcType=VARCHAR}, #{stepTotal,jdbcType=INTEGER}, #{schedule,jdbcType=VARCHAR}, 
+      #{createTime,jdbcType=BIGINT}, #{updateTime,jdbcType=BIGINT}, #{passRate,jdbcType=VARCHAR}, 
+      #{lastResult,jdbcType=VARCHAR}, #{reportId,jdbcType=VARCHAR}, #{num,jdbcType=INTEGER}, 
+      #{originalState,jdbcType=VARCHAR}, #{customNum,jdbcType=VARCHAR}, #{createUser,jdbcType=VARCHAR}, 
+      #{version,jdbcType=INTEGER}, #{deleteTime,jdbcType=BIGINT}, #{deleteUserId,jdbcType=VARCHAR}, 
+      #{executeTimes,jdbcType=INTEGER}, #{order,jdbcType=BIGINT}, #{environmentType,jdbcType=VARCHAR}, 
+      #{environmentGroupId,jdbcType=VARCHAR}, #{versionId,jdbcType=VARCHAR}, #{refId,jdbcType=VARCHAR}, 
+      #{latest,jdbcType=BIT}, #{scenarioDefinition,jdbcType=LONGVARCHAR}, #{description,jdbcType=LONGVARCHAR}, 
+      #{useUrl,jdbcType=LONGVARCHAR}, #{environmentJson,jdbcType=LONGVARCHAR})
   </insert>
-  <insert id="insertSelective" parameterType="io.metersphere.base.domain.ApiScenario">
+  <insert id="insertSelective" parameterType="io.metersphere.base.domain.ApiScenarioWithBLOBs">
     insert into api_scenario
     <trim prefix="(" suffix=")" suffixOverrides=",">
       <if test="id != null">
@@ -164,8 +191,8 @@
       <if test="projectId != null">
         project_id,
       </if>
-      <if test="tagId != null">
-        tag_id,
+      <if test="tags != null">
+        tags,
       </if>
       <if test="userId != null">
         user_id,
@@ -191,14 +218,8 @@
       <if test="stepTotal != null">
         step_total,
       </if>
-      <if test="followPeople != null">
-        follow_people,
-      </if>
       <if test="schedule != null">
         schedule,
-      </if>
-      <if test="description != null">
-        description,
       </if>
       <if test="createTime != null">
         create_time,
@@ -215,8 +236,59 @@
       <if test="reportId != null">
         report_id,
       </if>
+      <if test="num != null">
+        num,
+      </if>
+      <if test="originalState != null">
+        original_state,
+      </if>
+      <if test="customNum != null">
+        custom_num,
+      </if>
+      <if test="createUser != null">
+        create_user,
+      </if>
+      <if test="version != null">
+        version,
+      </if>
+      <if test="deleteTime != null">
+        delete_time,
+      </if>
+      <if test="deleteUserId != null">
+        delete_user_id,
+      </if>
+      <if test="executeTimes != null">
+        execute_times,
+      </if>
+      <if test="order != null">
+        `order`,
+      </if>
+      <if test="environmentType != null">
+        environment_type,
+      </if>
+      <if test="environmentGroupId != null">
+        environment_group_id,
+      </if>
+      <if test="versionId != null">
+        version_id,
+      </if>
+      <if test="refId != null">
+        ref_id,
+      </if>
+      <if test="latest != null">
+        latest,
+      </if>
       <if test="scenarioDefinition != null">
         scenario_definition,
+      </if>
+      <if test="description != null">
+        description,
+      </if>
+      <if test="useUrl != null">
+        use_url,
+      </if>
+      <if test="environmentJson != null">
+        environment_json,
       </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
@@ -226,8 +298,8 @@
       <if test="projectId != null">
         #{projectId,jdbcType=VARCHAR},
       </if>
-      <if test="tagId != null">
-        #{tagId,jdbcType=VARCHAR},
+      <if test="tags != null">
+        #{tags,jdbcType=VARCHAR},
       </if>
       <if test="userId != null">
         #{userId,jdbcType=VARCHAR},
@@ -253,14 +325,8 @@
       <if test="stepTotal != null">
         #{stepTotal,jdbcType=INTEGER},
       </if>
-      <if test="followPeople != null">
-        #{followPeople,jdbcType=VARCHAR},
-      </if>
       <if test="schedule != null">
         #{schedule,jdbcType=VARCHAR},
-      </if>
-      <if test="description != null">
-        #{description,jdbcType=VARCHAR},
       </if>
       <if test="createTime != null">
         #{createTime,jdbcType=BIGINT},
@@ -277,8 +343,59 @@
       <if test="reportId != null">
         #{reportId,jdbcType=VARCHAR},
       </if>
+      <if test="num != null">
+        #{num,jdbcType=INTEGER},
+      </if>
+      <if test="originalState != null">
+        #{originalState,jdbcType=VARCHAR},
+      </if>
+      <if test="customNum != null">
+        #{customNum,jdbcType=VARCHAR},
+      </if>
+      <if test="createUser != null">
+        #{createUser,jdbcType=VARCHAR},
+      </if>
+      <if test="version != null">
+        #{version,jdbcType=INTEGER},
+      </if>
+      <if test="deleteTime != null">
+        #{deleteTime,jdbcType=BIGINT},
+      </if>
+      <if test="deleteUserId != null">
+        #{deleteUserId,jdbcType=VARCHAR},
+      </if>
+      <if test="executeTimes != null">
+        #{executeTimes,jdbcType=INTEGER},
+      </if>
+      <if test="order != null">
+        #{order,jdbcType=BIGINT},
+      </if>
+      <if test="environmentType != null">
+        #{environmentType,jdbcType=VARCHAR},
+      </if>
+      <if test="environmentGroupId != null">
+        #{environmentGroupId,jdbcType=VARCHAR},
+      </if>
+      <if test="versionId != null">
+        #{versionId,jdbcType=VARCHAR},
+      </if>
+      <if test="refId != null">
+        #{refId,jdbcType=VARCHAR},
+      </if>
+      <if test="latest != null">
+        #{latest,jdbcType=BIT},
+      </if>
       <if test="scenarioDefinition != null">
         #{scenarioDefinition,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="description != null">
+        #{description,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="useUrl != null">
+        #{useUrl,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="environmentJson != null">
+        #{environmentJson,jdbcType=LONGVARCHAR},
       </if>
     </trim>
   </insert>
@@ -297,8 +414,8 @@
       <if test="record.projectId != null">
         project_id = #{record.projectId,jdbcType=VARCHAR},
       </if>
-      <if test="record.tagId != null">
-        tag_id = #{record.tagId,jdbcType=VARCHAR},
+      <if test="record.tags != null">
+        tags = #{record.tags,jdbcType=VARCHAR},
       </if>
       <if test="record.userId != null">
         user_id = #{record.userId,jdbcType=VARCHAR},
@@ -324,14 +441,8 @@
       <if test="record.stepTotal != null">
         step_total = #{record.stepTotal,jdbcType=INTEGER},
       </if>
-      <if test="record.followPeople != null">
-        follow_people = #{record.followPeople,jdbcType=VARCHAR},
-      </if>
       <if test="record.schedule != null">
         schedule = #{record.schedule,jdbcType=VARCHAR},
-      </if>
-      <if test="record.description != null">
-        description = #{record.description,jdbcType=VARCHAR},
       </if>
       <if test="record.createTime != null">
         create_time = #{record.createTime,jdbcType=BIGINT},
@@ -348,8 +459,59 @@
       <if test="record.reportId != null">
         report_id = #{record.reportId,jdbcType=VARCHAR},
       </if>
+      <if test="record.num != null">
+        num = #{record.num,jdbcType=INTEGER},
+      </if>
+      <if test="record.originalState != null">
+        original_state = #{record.originalState,jdbcType=VARCHAR},
+      </if>
+      <if test="record.customNum != null">
+        custom_num = #{record.customNum,jdbcType=VARCHAR},
+      </if>
+      <if test="record.createUser != null">
+        create_user = #{record.createUser,jdbcType=VARCHAR},
+      </if>
+      <if test="record.version != null">
+        version = #{record.version,jdbcType=INTEGER},
+      </if>
+      <if test="record.deleteTime != null">
+        delete_time = #{record.deleteTime,jdbcType=BIGINT},
+      </if>
+      <if test="record.deleteUserId != null">
+        delete_user_id = #{record.deleteUserId,jdbcType=VARCHAR},
+      </if>
+      <if test="record.executeTimes != null">
+        execute_times = #{record.executeTimes,jdbcType=INTEGER},
+      </if>
+      <if test="record.order != null">
+        `order` = #{record.order,jdbcType=BIGINT},
+      </if>
+      <if test="record.environmentType != null">
+        environment_type = #{record.environmentType,jdbcType=VARCHAR},
+      </if>
+      <if test="record.environmentGroupId != null">
+        environment_group_id = #{record.environmentGroupId,jdbcType=VARCHAR},
+      </if>
+      <if test="record.versionId != null">
+        version_id = #{record.versionId,jdbcType=VARCHAR},
+      </if>
+      <if test="record.refId != null">
+        ref_id = #{record.refId,jdbcType=VARCHAR},
+      </if>
+      <if test="record.latest != null">
+        latest = #{record.latest,jdbcType=BIT},
+      </if>
       <if test="record.scenarioDefinition != null">
         scenario_definition = #{record.scenarioDefinition,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="record.description != null">
+        description = #{record.description,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="record.useUrl != null">
+        use_url = #{record.useUrl,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="record.environmentJson != null">
+        environment_json = #{record.environmentJson,jdbcType=LONGVARCHAR},
       </if>
     </set>
     <if test="_parameter != null">
@@ -360,7 +522,7 @@
     update api_scenario
     set id = #{record.id,jdbcType=VARCHAR},
       project_id = #{record.projectId,jdbcType=VARCHAR},
-      tag_id = #{record.tagId,jdbcType=VARCHAR},
+      tags = #{record.tags,jdbcType=VARCHAR},
       user_id = #{record.userId,jdbcType=VARCHAR},
       api_scenario_module_id = #{record.apiScenarioModuleId,jdbcType=VARCHAR},
       module_path = #{record.modulePath,jdbcType=VARCHAR},
@@ -369,15 +531,30 @@
       `status` = #{record.status,jdbcType=VARCHAR},
       principal = #{record.principal,jdbcType=VARCHAR},
       step_total = #{record.stepTotal,jdbcType=INTEGER},
-      follow_people = #{record.followPeople,jdbcType=VARCHAR},
       schedule = #{record.schedule,jdbcType=VARCHAR},
-      description = #{record.description,jdbcType=VARCHAR},
       create_time = #{record.createTime,jdbcType=BIGINT},
       update_time = #{record.updateTime,jdbcType=BIGINT},
       pass_rate = #{record.passRate,jdbcType=VARCHAR},
       last_result = #{record.lastResult,jdbcType=VARCHAR},
       report_id = #{record.reportId,jdbcType=VARCHAR},
-      scenario_definition = #{record.scenarioDefinition,jdbcType=LONGVARCHAR}
+      num = #{record.num,jdbcType=INTEGER},
+      original_state = #{record.originalState,jdbcType=VARCHAR},
+      custom_num = #{record.customNum,jdbcType=VARCHAR},
+      create_user = #{record.createUser,jdbcType=VARCHAR},
+      version = #{record.version,jdbcType=INTEGER},
+      delete_time = #{record.deleteTime,jdbcType=BIGINT},
+      delete_user_id = #{record.deleteUserId,jdbcType=VARCHAR},
+      execute_times = #{record.executeTimes,jdbcType=INTEGER},
+      `order` = #{record.order,jdbcType=BIGINT},
+      environment_type = #{record.environmentType,jdbcType=VARCHAR},
+      environment_group_id = #{record.environmentGroupId,jdbcType=VARCHAR},
+      version_id = #{record.versionId,jdbcType=VARCHAR},
+      ref_id = #{record.refId,jdbcType=VARCHAR},
+      latest = #{record.latest,jdbcType=BIT},
+      scenario_definition = #{record.scenarioDefinition,jdbcType=LONGVARCHAR},
+      description = #{record.description,jdbcType=LONGVARCHAR},
+      use_url = #{record.useUrl,jdbcType=LONGVARCHAR},
+      environment_json = #{record.environmentJson,jdbcType=LONGVARCHAR}
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
     </if>
@@ -386,7 +563,7 @@
     update api_scenario
     set id = #{record.id,jdbcType=VARCHAR},
       project_id = #{record.projectId,jdbcType=VARCHAR},
-      tag_id = #{record.tagId,jdbcType=VARCHAR},
+      tags = #{record.tags,jdbcType=VARCHAR},
       user_id = #{record.userId,jdbcType=VARCHAR},
       api_scenario_module_id = #{record.apiScenarioModuleId,jdbcType=VARCHAR},
       module_path = #{record.modulePath,jdbcType=VARCHAR},
@@ -395,26 +572,38 @@
       `status` = #{record.status,jdbcType=VARCHAR},
       principal = #{record.principal,jdbcType=VARCHAR},
       step_total = #{record.stepTotal,jdbcType=INTEGER},
-      follow_people = #{record.followPeople,jdbcType=VARCHAR},
       schedule = #{record.schedule,jdbcType=VARCHAR},
-      description = #{record.description,jdbcType=VARCHAR},
       create_time = #{record.createTime,jdbcType=BIGINT},
       update_time = #{record.updateTime,jdbcType=BIGINT},
       pass_rate = #{record.passRate,jdbcType=VARCHAR},
       last_result = #{record.lastResult,jdbcType=VARCHAR},
-      report_id = #{record.reportId,jdbcType=VARCHAR}
+      report_id = #{record.reportId,jdbcType=VARCHAR},
+      num = #{record.num,jdbcType=INTEGER},
+      original_state = #{record.originalState,jdbcType=VARCHAR},
+      custom_num = #{record.customNum,jdbcType=VARCHAR},
+      create_user = #{record.createUser,jdbcType=VARCHAR},
+      version = #{record.version,jdbcType=INTEGER},
+      delete_time = #{record.deleteTime,jdbcType=BIGINT},
+      delete_user_id = #{record.deleteUserId,jdbcType=VARCHAR},
+      execute_times = #{record.executeTimes,jdbcType=INTEGER},
+      `order` = #{record.order,jdbcType=BIGINT},
+      environment_type = #{record.environmentType,jdbcType=VARCHAR},
+      environment_group_id = #{record.environmentGroupId,jdbcType=VARCHAR},
+      version_id = #{record.versionId,jdbcType=VARCHAR},
+      ref_id = #{record.refId,jdbcType=VARCHAR},
+      latest = #{record.latest,jdbcType=BIT}
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
     </if>
   </update>
-  <update id="updateByPrimaryKeySelective" parameterType="io.metersphere.base.domain.ApiScenario">
+  <update id="updateByPrimaryKeySelective" parameterType="io.metersphere.base.domain.ApiScenarioWithBLOBs">
     update api_scenario
     <set>
       <if test="projectId != null">
         project_id = #{projectId,jdbcType=VARCHAR},
       </if>
-      <if test="tagId != null">
-        tag_id = #{tagId,jdbcType=VARCHAR},
+      <if test="tags != null">
+        tags = #{tags,jdbcType=VARCHAR},
       </if>
       <if test="userId != null">
         user_id = #{userId,jdbcType=VARCHAR},
@@ -440,14 +629,8 @@
       <if test="stepTotal != null">
         step_total = #{stepTotal,jdbcType=INTEGER},
       </if>
-      <if test="followPeople != null">
-        follow_people = #{followPeople,jdbcType=VARCHAR},
-      </if>
       <if test="schedule != null">
         schedule = #{schedule,jdbcType=VARCHAR},
-      </if>
-      <if test="description != null">
-        description = #{description,jdbcType=VARCHAR},
       </if>
       <if test="createTime != null">
         create_time = #{createTime,jdbcType=BIGINT},
@@ -464,16 +647,67 @@
       <if test="reportId != null">
         report_id = #{reportId,jdbcType=VARCHAR},
       </if>
+      <if test="num != null">
+        num = #{num,jdbcType=INTEGER},
+      </if>
+      <if test="originalState != null">
+        original_state = #{originalState,jdbcType=VARCHAR},
+      </if>
+      <if test="customNum != null">
+        custom_num = #{customNum,jdbcType=VARCHAR},
+      </if>
+      <if test="createUser != null">
+        create_user = #{createUser,jdbcType=VARCHAR},
+      </if>
+      <if test="version != null">
+        version = #{version,jdbcType=INTEGER},
+      </if>
+      <if test="deleteTime != null">
+        delete_time = #{deleteTime,jdbcType=BIGINT},
+      </if>
+      <if test="deleteUserId != null">
+        delete_user_id = #{deleteUserId,jdbcType=VARCHAR},
+      </if>
+      <if test="executeTimes != null">
+        execute_times = #{executeTimes,jdbcType=INTEGER},
+      </if>
+      <if test="order != null">
+        `order` = #{order,jdbcType=BIGINT},
+      </if>
+      <if test="environmentType != null">
+        environment_type = #{environmentType,jdbcType=VARCHAR},
+      </if>
+      <if test="environmentGroupId != null">
+        environment_group_id = #{environmentGroupId,jdbcType=VARCHAR},
+      </if>
+      <if test="versionId != null">
+        version_id = #{versionId,jdbcType=VARCHAR},
+      </if>
+      <if test="refId != null">
+        ref_id = #{refId,jdbcType=VARCHAR},
+      </if>
+      <if test="latest != null">
+        latest = #{latest,jdbcType=BIT},
+      </if>
       <if test="scenarioDefinition != null">
         scenario_definition = #{scenarioDefinition,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="description != null">
+        description = #{description,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="useUrl != null">
+        use_url = #{useUrl,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="environmentJson != null">
+        environment_json = #{environmentJson,jdbcType=LONGVARCHAR},
       </if>
     </set>
     where id = #{id,jdbcType=VARCHAR}
   </update>
-  <update id="updateByPrimaryKeyWithBLOBs" parameterType="io.metersphere.base.domain.ApiScenario">
+  <update id="updateByPrimaryKeyWithBLOBs" parameterType="io.metersphere.base.domain.ApiScenarioWithBLOBs">
     update api_scenario
     set project_id = #{projectId,jdbcType=VARCHAR},
-      tag_id = #{tagId,jdbcType=VARCHAR},
+      tags = #{tags,jdbcType=VARCHAR},
       user_id = #{userId,jdbcType=VARCHAR},
       api_scenario_module_id = #{apiScenarioModuleId,jdbcType=VARCHAR},
       module_path = #{modulePath,jdbcType=VARCHAR},
@@ -482,21 +716,36 @@
       `status` = #{status,jdbcType=VARCHAR},
       principal = #{principal,jdbcType=VARCHAR},
       step_total = #{stepTotal,jdbcType=INTEGER},
-      follow_people = #{followPeople,jdbcType=VARCHAR},
       schedule = #{schedule,jdbcType=VARCHAR},
-      description = #{description,jdbcType=VARCHAR},
       create_time = #{createTime,jdbcType=BIGINT},
       update_time = #{updateTime,jdbcType=BIGINT},
       pass_rate = #{passRate,jdbcType=VARCHAR},
       last_result = #{lastResult,jdbcType=VARCHAR},
       report_id = #{reportId,jdbcType=VARCHAR},
-      scenario_definition = #{scenarioDefinition,jdbcType=LONGVARCHAR}
+      num = #{num,jdbcType=INTEGER},
+      original_state = #{originalState,jdbcType=VARCHAR},
+      custom_num = #{customNum,jdbcType=VARCHAR},
+      create_user = #{createUser,jdbcType=VARCHAR},
+      version = #{version,jdbcType=INTEGER},
+      delete_time = #{deleteTime,jdbcType=BIGINT},
+      delete_user_id = #{deleteUserId,jdbcType=VARCHAR},
+      execute_times = #{executeTimes,jdbcType=INTEGER},
+      `order` = #{order,jdbcType=BIGINT},
+      environment_type = #{environmentType,jdbcType=VARCHAR},
+      environment_group_id = #{environmentGroupId,jdbcType=VARCHAR},
+      version_id = #{versionId,jdbcType=VARCHAR},
+      ref_id = #{refId,jdbcType=VARCHAR},
+      latest = #{latest,jdbcType=BIT},
+      scenario_definition = #{scenarioDefinition,jdbcType=LONGVARCHAR},
+      description = #{description,jdbcType=LONGVARCHAR},
+      use_url = #{useUrl,jdbcType=LONGVARCHAR},
+      environment_json = #{environmentJson,jdbcType=LONGVARCHAR}
     where id = #{id,jdbcType=VARCHAR}
   </update>
   <update id="updateByPrimaryKey" parameterType="io.metersphere.base.domain.ApiScenario">
     update api_scenario
     set project_id = #{projectId,jdbcType=VARCHAR},
-      tag_id = #{tagId,jdbcType=VARCHAR},
+      tags = #{tags,jdbcType=VARCHAR},
       user_id = #{userId,jdbcType=VARCHAR},
       api_scenario_module_id = #{apiScenarioModuleId,jdbcType=VARCHAR},
       module_path = #{modulePath,jdbcType=VARCHAR},
@@ -505,14 +754,26 @@
       `status` = #{status,jdbcType=VARCHAR},
       principal = #{principal,jdbcType=VARCHAR},
       step_total = #{stepTotal,jdbcType=INTEGER},
-      follow_people = #{followPeople,jdbcType=VARCHAR},
       schedule = #{schedule,jdbcType=VARCHAR},
-      description = #{description,jdbcType=VARCHAR},
       create_time = #{createTime,jdbcType=BIGINT},
       update_time = #{updateTime,jdbcType=BIGINT},
       pass_rate = #{passRate,jdbcType=VARCHAR},
       last_result = #{lastResult,jdbcType=VARCHAR},
-      report_id = #{reportId,jdbcType=VARCHAR}
+      report_id = #{reportId,jdbcType=VARCHAR},
+      num = #{num,jdbcType=INTEGER},
+      original_state = #{originalState,jdbcType=VARCHAR},
+      custom_num = #{customNum,jdbcType=VARCHAR},
+      create_user = #{createUser,jdbcType=VARCHAR},
+      version = #{version,jdbcType=INTEGER},
+      delete_time = #{deleteTime,jdbcType=BIGINT},
+      delete_user_id = #{deleteUserId,jdbcType=VARCHAR},
+      execute_times = #{executeTimes,jdbcType=INTEGER},
+      `order` = #{order,jdbcType=BIGINT},
+      environment_type = #{environmentType,jdbcType=VARCHAR},
+      environment_group_id = #{environmentGroupId,jdbcType=VARCHAR},
+      version_id = #{versionId,jdbcType=VARCHAR},
+      ref_id = #{refId,jdbcType=VARCHAR},
+      latest = #{latest,jdbcType=BIT}
     where id = #{id,jdbcType=VARCHAR}
   </update>
 </mapper>

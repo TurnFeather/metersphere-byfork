@@ -1,9 +1,8 @@
 package io.metersphere.track.domain;
 
 import io.metersphere.base.domain.Project;
-import io.metersphere.base.domain.TestCaseNode;
-import io.metersphere.base.domain.TestCaseNodeExample;
-import io.metersphere.base.mapper.TestCaseNodeMapper;
+import io.metersphere.base.mapper.ext.ExtTestCaseNodeMapper;
+import io.metersphere.commons.constants.IssueRefType;
 import io.metersphere.commons.constants.TestPlanTestCaseStatus;
 import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.commons.utils.MathUtils;
@@ -11,6 +10,7 @@ import io.metersphere.track.dto.*;
 import io.metersphere.track.service.IssuesService;
 import io.metersphere.track.service.TestCaseNodeService;
 import io.metersphere.track.service.TestPlanProjectService;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
@@ -29,11 +29,13 @@ public class ReportResultComponent extends ReportComponent {
 
     public void init() {
         TestCaseNodeService testCaseNodeService = (TestCaseNodeService) CommonBeanFactory.getBean("testCaseNodeService");
-        TestCaseNodeMapper testCaseNodeMapper = (TestCaseNodeMapper) CommonBeanFactory.getBean("testCaseNodeMapper");
+        ExtTestCaseNodeMapper extTestCaseNodeMapper = (ExtTestCaseNodeMapper) CommonBeanFactory.getBean("extTestCaseNodeMapper");
         TestPlanProjectService testPlanProjectService = (TestPlanProjectService) CommonBeanFactory.getBean("testPlanProjectService");
-        TestCaseNodeExample testCaseNodeExample = new TestCaseNodeExample();
-        testCaseNodeExample.createCriteria().andProjectIdIn(testPlanProjectService.getProjectIdsByPlanId(testPlan.getId()));
-        List<TestCaseNode> nodes = testCaseNodeMapper.selectByExample(testCaseNodeExample);
+        List<String> projectIds = testPlanProjectService.getProjectIdsByPlanId(testPlan.getId());
+        if (CollectionUtils.isEmpty(projectIds)) {
+            projectIds.add(testPlan.getProjectId());
+        }
+        List<TestCaseNodeDTO> nodes = extTestCaseNodeMapper.getNodeTreeByProjectIds(projectIds);
         nodeTrees = testCaseNodeService.getNodeTrees(nodes);
         nodeTrees.forEach(item -> {
             Set<String> childIds = new HashSet<>();
@@ -120,7 +122,7 @@ public class ReportResultComponent extends ReportComponent {
                 if (StringUtils.equals(testCase.getStatus(), TestPlanTestCaseStatus.Blocking.name())) {
                     moduleResult.setBlockingCount(moduleResult.getBlockingCount() + 1);
                 }
-                moduleResult.setIssuesCount(moduleResult.getIssuesCount() + issuesService.getIssues(testCase.getCaseId()).size());
+                moduleResult.setIssuesCount(moduleResult.getIssuesCount() + issuesService.getIssues(testCase.getId(), IssueRefType.PLAN_FUNCTIONAL.name()).size());
                 moduleResultMap.put(rootNodeId, moduleResult);
                 return;
             }

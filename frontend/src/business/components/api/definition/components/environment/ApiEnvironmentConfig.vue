@@ -4,9 +4,10 @@
              @close="close" append-to-body ref="environmentConfig">
     <el-container v-loading="result.loading">
       <ms-aside-item :enable-aside-hidden="false" :title="$t('api_test.environment.environment_list')"
+                     :env-add-permission="['PROJECT_ENVIRONMENT:READ+CREATE']"
                      :data="environments" :item-operators="environmentOperators" :add-fuc="addEnvironment"
                      :delete-fuc="deleteEnvironment" @itemSelected="environmentSelected" ref="environmentItems"/>
-      <environment-edit :environment="currentEnvironment" ref="environmentEdit" @close="close"/>
+      <environment-edit :if-create="ifCreate" :environment="currentEnvironment" ref="environmentEdit" @close="close" :is-read-only="isReadOnly"/>
     </el-container>
   </el-dialog>
 </template>
@@ -20,7 +21,7 @@
   import MsMainContainer from "../../../../common/components/MsMainContainer";
   import MsAsideItem from "../../../../common/components/MsAsideItem";
   import EnvironmentEdit from "./EnvironmentEdit";
-  import {deepClone, listenGoBack, removeGoBackListener} from "@/common/js/utils";
+  import {deepClone, hasPermission, listenGoBack, removeGoBackListener} from "@/common/js/utils";
   import {Environment, parseEnvironment} from "../../model/EnvironmentModel";
 
   export default {
@@ -40,23 +41,34 @@
         environmentOperators: [
           {
             icon: 'el-icon-document-copy',
-            func: this.copyEnvironment
+            func: this.copyEnvironment,
+            permissions: ['PROJECT_ENVIRONMENT:READ+COPY']
           },
           {
             icon: 'el-icon-delete',
-            func: this.deleteEnvironment
+            func: this.deleteEnvironment,
+            permissions: ['PROJECT_ENVIRONMENT:READ+DELETE']
           }
-        ]
+        ],
+        selectEnvironmentId: '',
+        ifCreate: false, //是否是创建环境
+      }
+    },
+    computed: {
+      isReadOnly() {
+        return !hasPermission('PROJECT_ENVIRONMENT:READ+EDIT');
       }
     },
     methods: {
-      open: function (projectId) {
+      open: function (projectId, envId) {
         this.visible = true;
         this.projectId = projectId;
+        this.selectEnvironmentId = envId;
         this.getEnvironments();
         listenGoBack(this.close);
       },
       deleteEnvironment(environment, index) {
+        this.ifCreate = false;
         if (environment.id) {
           this.result = this.$get('/api/environment/delete/' + environment.id, () => {
             this.$success(this.$t('commons.delete_success'));
@@ -68,6 +80,7 @@
         }
       },
       copyEnvironment(environment) {
+        this.ifCreate = false;
         this.currentEnvironment = environment;
         if (!environment.id) {
           this.$warning(this.$t('commons.please_save'));
@@ -100,6 +113,7 @@
         return name;
       },
       addEnvironment() {
+        this.ifCreate = true;
         let newEnvironment = new Environment({
           projectId: this.projectId
         });
@@ -114,7 +128,16 @@
           this.result = this.$get('/api/environment/list/' + this.projectId, response => {
             this.environments = response.data;
             if (this.environments.length > 0) {
-              this.$refs.environmentItems.itemSelected(0, this.environments[0]);
+              if (this.selectEnvironmentId) {
+                const index = this.environments.findIndex(e => e.id === this.selectEnvironmentId);
+                if (index !== -1) {
+                  this.$refs.environmentItems.itemSelected(index, this.environments[index]);
+                } else {
+                  this.$refs.environmentItems.itemSelected(0, this.environments[0]);
+                }
+              } else {
+                this.$refs.environmentItems.itemSelected(0, this.environments[0]);
+              }
             } else {
               let item = new Environment({
                 projectId: this.projectId
@@ -128,6 +151,9 @@
       getEnvironment(environment) {
         parseEnvironment(environment);
         this.currentEnvironment = environment;
+        if(this.currentEnvironment.name){
+          this.ifCreate = false;
+        }
       },
       close() {
         this.$emit('close');

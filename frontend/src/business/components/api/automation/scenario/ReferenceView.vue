@@ -1,14 +1,26 @@
 <template>
-  <el-dialog :close-on-click-modal="false" :title="$t('api_test.automation.case_ref')" :visible.sync="visible"
+  <el-dialog :close-on-click-modal="false" :title="$t('api_test.automation.scenario_ref')" :visible.sync="visible"
              width="45%" :destroy-on-close="true">
     <span>{{ $t('api_test.automation.scenario_ref') }}：</span>
     <div class="refs" v-loading="scenarioLoading">
-      <div v-for="(item, index) in scenarioRefs" :key="index" class="el-button--text">{{ item.name }}</div>
+      <div v-for="(item, index) in scenarioRefs" :key="index" class="el-button--text">
+        <el-link @click="openScenario(item)" v-if="item.status === 'Trash'">
+          {{ item.name }}
+          <el-tag size="mini">{{ $t('commons.trash') }}</el-tag>
+        </el-link>
+        <el-link @click="openScenario(item)" v-else>
+          {{ item.name }}
+        </el-link>
+      </div>
     </div>
 
     <span>{{ $t('api_test.automation.plan_ref') }}：</span>
     <div class="refs">
-      <div v-for="(item, index) in planRefs" :key="index" class="el-button--text">{{ item.name }}</div>
+      <div v-for="(item, index) in planRefs" :key="index" class="el-button--text">
+        <router-link :to="'/track/plan/view/' + item.id">
+          {{ item.name }}
+        </router-link>
+      </div>
     </div>
 
     <template v-slot:footer>
@@ -47,6 +59,10 @@ export default {
     open(row) {
       this.getReferenceData(row);
       this.visible = true
+    },
+    openScenario(item) {
+      this.$emit('openScenario', item);
+      this.visible = false;
     }
   }
 }
@@ -59,5 +75,12 @@ export default {
   overflow-y: auto;
   font-size: 12px;
   padding-bottom: 10px;
+}
+
+.el-button--text .el-link.el-link--default {
+  font-size: 12px;
+  color: #4b1980;
+  font-weight: 400;
+  text-decoration: underline;
 }
 </style>

@@ -1,5 +1,6 @@
 package io.metersphere.base.mapper.ext;
 
+import io.metersphere.base.domain.TestPlan;
 import io.metersphere.track.dto.TestPlanDTO;
 import io.metersphere.track.dto.TestPlanDTOWithMetric;
 import io.metersphere.track.request.testcase.QueryTestPlanRequest;
@@ -17,9 +18,23 @@ public interface ExtTestPlanMapper {
 
     List<TestPlanDTO> selectByIds(@Param("list") List<String> ids);
 
-    int updatePlan(@Param("plan") TestPlanDTO plan);
+    /**
+     * 通过关联表(test_plan_api_case/test_plan_api_scenario)查询testPlan
+     *
+     * @param params
+     * @return
+     */
+    List<TestPlanDTO> selectTestPlanByRelevancy(@Param("request") QueryTestPlanRequest params);
 
-    List<TestPlanDTO> selectReference(@Param("request") QueryTestPlanRequest params);
+    int checkIsHave(@Param("planId") String planId, @Param("projectIds") Set<String> projectIds);
 
-    int checkIsHave(@Param("planId") String planId, @Param("workspaceIds") Set<String> workspaceIds);
+    String findTestProjectNameByTestPlanID(String testPlanId);
+
+    String findScheduleCreateUserById(String testPlanId);
+
+    List<String> findIdByPerformanceReportId(String reportId);
+
+    List<TestPlan> listRecent(@Param("userId") String userId, @Param("projectId") String currentProjectId);
+
+    int updateActualEndTimeIsNullById(String testPlanID);
 }

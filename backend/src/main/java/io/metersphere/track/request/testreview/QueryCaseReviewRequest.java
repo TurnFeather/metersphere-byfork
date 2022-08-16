@@ -1,6 +1,5 @@
 package io.metersphere.track.request.testreview;
 
-import io.metersphere.base.domain.TestCaseReview;
 import io.metersphere.base.domain.TestCaseReviewTestCase;
 import io.metersphere.controller.request.OrderRequest;
 import lombok.Getter;
@@ -32,9 +31,19 @@ public class QueryCaseReviewRequest extends TestCaseReviewTestCase {
 
     private String node;
 
+    private String nodeId;
+
     private String method;
 
     private Map<String, Object> combine;
 
     private String projectId;
+
+    private String projectName;
+
+    private String reviewerId;
+
+    private String versionId;
+
+    private String refId;
 }

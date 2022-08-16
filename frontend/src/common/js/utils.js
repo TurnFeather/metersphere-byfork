@@ -1,16 +1,17 @@
 import {
+  COUNT_NUMBER,
+  COUNT_NUMBER_SHALLOW,
   LicenseKey,
-  REFRESH_SESSION_USER_URL,
-  ROLE_ADMIN,
-  ROLE_ORG_ADMIN,
-  ROLE_TEST_MANAGER,
-  ROLE_TEST_USER,
-  ROLE_TEST_VIEWER,
+  ORIGIN_COLOR,
+  ORIGIN_COLOR_SHALLOW,
+  PRIMARY_COLOR,
+  PROJECT_ID,
   TokenKey,
-  PROJECT_ID
+  WORKSPACE_ID
 } from "./constants";
-import axios from "axios";
 import {jsPDF} from "jspdf";
+import JSEncrypt from 'jsencrypt';
+import i18n from "@/i18n/i18n";
 
 export function hasRole(role) {
   let user = getCurrentUser();
@@ -18,89 +19,126 @@ export function hasRole(role) {
   return roles.indexOf(role) > -1;
 }
 
-// 是否含有某个角色
-export function hasRoles(...roles) {
+export function hasPermission(permission) {
   let user = getCurrentUser();
-  let rs = user.roles.map(r => r.id);
-  for (let item of roles) {
-    if (rs.indexOf(item) > -1) {
+
+  user.userGroups.forEach(ug => {
+    user.groupPermissions.forEach(gp => {
+      if (gp.group.id === ug.groupId) {
+        ug.userGroupPermissions = gp.userGroupPermissions;
+        ug.group = gp.group;
+      }
+    });
+  });
+
+  // todo 权限验证
+  let currentProjectPermissions = user.userGroups.filter(ug => ug.group && ug.group.type === 'PROJECT')
+    .filter(ug => ug.sourceId === getCurrentProjectID())
+    .map(ug => ug.userGroupPermissions)
+    .reduce((total, current) => {
+      return total.concat(current);
+    }, [])
+    .map(g => g.permissionId)
+    .reduce((total, current) => {
+      total.add(current);
+      return total;
+    }, new Set);
+
+  for (const p of currentProjectPermissions) {
+    if (p === permission) {
       return true;
     }
   }
-  return false;
-}
 
-export function hasRolePermission(role) {
-  let user = getCurrentUser();
-  for (let ur of user.userRoles) {
-    if (role === ur.roleId) {
-      if (ur.roleId === ROLE_ADMIN) {
-        return true;
-      } else if (ur.roleId === ROLE_ORG_ADMIN && user.lastOrganizationId === ur.sourceId) {
-        return true;
-      } else if (user.lastWorkspaceId === ur.sourceId) {
-        return true;
-      }
+  let currentWorkspacePermissions = user.userGroups.filter(ug => ug.group && ug.group.type === 'WORKSPACE')
+    .filter(ug => ug.sourceId === getCurrentWorkspaceId())
+    .map(ug => ug.userGroupPermissions)
+    .reduce((total, current) => {
+      return total.concat(current);
+    }, [])
+    .map(g => g.permissionId)
+    .reduce((total, current) => {
+      total.add(current);
+      return total;
+    }, new Set);
+
+  for (const p of currentWorkspacePermissions) {
+    if (p === permission) {
+      return true;
     }
   }
-  return false
+
+  let systemPermissions = user.userGroups.filter(gp => gp.group && gp.group.type === 'SYSTEM')
+    .filter(ug => ug.sourceId === 'system' || ug.sourceId === 'adminSourceId')
+    .map(ug => ug.userGroupPermissions)
+    .reduce((total, current) => {
+      return total.concat(current);
+    }, [])
+    .map(g => g.permissionId)
+    .reduce((total, current) => {
+      total.add(current);
+      return total;
+    }, new Set);
+
+  for (const p of systemPermissions) {
+    if (p === permission) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function hasLicense() {
   let v = localStorage.getItem(LicenseKey);
-  return v === 'valid';
+  return v && v === 'valid';
 }
 
-//是否含有对应组织或工作空间的角色
-export function hasRolePermissions(...roles) {
-  for (let role of roles) {
-    if (hasRolePermission(role)) {
+export function hasPermissions(...permissions) {
+  for (let p of permissions) {
+    if (hasPermission(p)) {
       return true;
     }
   }
   return false;
 }
 
-export function checkoutCurrentOrganization() {
-  // 查看当前用户是否是 lastOrganizationId 的组织管理员
-  return hasRolePermissions(ROLE_ORG_ADMIN);
-}
-
-export function checkoutCurrentWorkspace() {
-  // 查看当前用户是否是 lastWorkspaceId 的工作空间用户
-  return hasRolePermissions(ROLE_TEST_MANAGER, ROLE_TEST_USER, ROLE_TEST_VIEWER);
-}
-
-export function checkoutTestManagerOrTestUser() {
-  return hasRolePermissions(ROLE_TEST_MANAGER, ROLE_TEST_USER);
-}
-
-export function getCurrentOrganizationId() {
-  let user = getCurrentUser();
-  return user.lastOrganizationId;
-}
-
 export function getCurrentWorkspaceId() {
-  let user = getCurrentUser();
-  return user.lastWorkspaceId;
+  return sessionStorage.getItem(WORKSPACE_ID);
+}
+
+export function getCurrentProjectID() {
+  return sessionStorage.getItem(PROJECT_ID);
 }
 
 export function getCurrentUser() {
   return JSON.parse(localStorage.getItem(TokenKey));
 }
 
-export function getCurrentProjectID() {
-  return localStorage.getItem(PROJECT_ID);
+export function getCurrentUserId() {
+  let user = JSON.parse(localStorage.getItem(TokenKey));
+  return user.id;
+}
+
+export function enableModules(...modules) {
+  for (let module of modules) {
+    let moduleStatus = localStorage.getItem('module_' + module);
+    if (moduleStatus === 'DISABLE') {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function saveLocalStorage(response) {
   // 登录信息保存 cookie
   localStorage.setItem(TokenKey, JSON.stringify(response.data));
-  localStorage.setItem(PROJECT_ID, response.data.lastProjectId);
-  let rolesArray = response.data.roles;
-  let roles = rolesArray.map(r => r.id);
-  // 保存角色
-  localStorage.setItem("roles", roles);
+  if (!sessionStorage.getItem(PROJECT_ID)) {
+    sessionStorage.setItem(PROJECT_ID, response.data.lastProjectId);
+  }
+  if (!sessionStorage.getItem(WORKSPACE_ID)) {
+    sessionStorage.setItem(WORKSPACE_ID, response.data.lastWorkspaceId);
+  }
 }
 
 export function saveLicense(data) {
@@ -108,14 +146,9 @@ export function saveLicense(data) {
   localStorage.setItem(LicenseKey, data);
 }
 
-
-export function refreshSessionAndCookies(sign, sourceId) {
-  axios.post(REFRESH_SESSION_USER_URL + "/" + sign + "/" + sourceId).then(r => {
-    saveLocalStorage(r.data);
-    window.location.reload();
-  })
+export function removeLicense() {
+  localStorage.removeItem(LicenseKey);
 }
-
 
 export function jsonToMap(jsonStr) {
   let obj = JSON.parse(jsonStr);
@@ -139,43 +172,20 @@ export function humpToLine(name) {
   return name.replace(/([A-Z])/g, "_$1").toLowerCase();
 }
 
-//表格数据过滤
-export function _filter(filters, condition) {
-  if (!condition.filters) {
-    condition.filters = {};
-  }
-  for (let filter in filters) {
-    if (filters.hasOwnProperty(filter)) {
-      if (filters[filter] && filters[filter].length > 0) {
-        condition.filters[humpToLine(filter)] = filters[filter];
-      } else {
-        condition.filters[humpToLine(filter)] = null;
-      }
-    }
-  }
+// 下划线转换驼峰
+export function lineToHump(name) {
+  return name.replace(/\_(\w)/g, function (all, letter) {
+    return letter.toUpperCase();
+  });
 }
 
-//表格数据排序
-export function _sort(column, condition) {
-  column.prop = humpToLine(column.prop);
-  if (column.order === 'descending') {
-    column.order = 'desc';
-  } else {
-    column.order = 'asc';
-  }
-  if (!condition.orders) {
-    condition.orders = [];
-  }
-  let hasProp = false;
-  condition.orders.forEach(order => {
-    if (order.name === column.prop) {
-      order.type = column.order;
-      hasProp = true;
-    }
-  });
-  if (!hasProp) {
-    condition.orders.push({name: column.prop, type: column.order});
-  }
+// 查找字符出现的次数
+export function getCharCountInStr(str, char) {
+  if (!str) return 0;
+  let regex = new RegExp(char, 'g'); // 使用g表示整个字符串都要匹配
+  let result = str.match(regex);
+  let count = !result ? 0 : result.length;
+  return count;
 }
 
 export function downloadFile(name, content) {
@@ -187,10 +197,10 @@ export function downloadFile(name, content) {
     aTag.download = name;
     aTag.href = URL.createObjectURL(blob);
     aTag.click();
-    URL.revokeObjectURL(aTag.href)
+    URL.revokeObjectURL(aTag.href);
   } else {
     // IE10+下载
-    navigator.msSaveBlob(blob, name)
+    navigator.msSaveBlob(blob, name);
   }
 }
 
@@ -260,6 +270,10 @@ export function exportPdf(name, canvasList) {
       let blankHeight = a4Height - currentHeight;
 
       if (leftHeight > blankHeight) {
+        if (blankHeight < 200) {
+          pdf.addPage();
+          currentHeight = 0;
+        }
         //页面偏移
         let position = 0;
         while (leftHeight > 0) {
@@ -270,10 +284,10 @@ export function exportPdf(name, canvasList) {
           leftHeight -= occupation;
           position -= occupation;
           //避免添加空白页
-          if (leftHeight > 0) {
-            pdf.addPage();
-            currentHeight = 0;
-          }
+          // if (leftHeight > 0) {
+          // pdf.addPage();
+          // currentHeight = 0;
+          // }
         }
       } else {
         pdf.addImage(pageData, 'JPEG', 0, currentHeight, imgWidth, imgHeight);
@@ -296,7 +310,216 @@ export function windowPrint(id, zoom) {
   window.document.body.innerHTML = jubuData;
   //调用打印功能
   window.print();
+  document.getElementsByTagName('body')[0].style.zoom = 1;
   window.document.body.innerHTML = bdhtml;//重新给页面内容赋值；
   return false;
 }
 
+export function getBodyUploadFiles(obj, runData) {
+  let bodyUploadFiles = [];
+  obj.bodyUploadIds = [];
+  if (runData) {
+    if (runData instanceof Array) {
+      runData.forEach(request => {
+        obj.requestId = request.id;
+        _getBodyUploadFiles(request, bodyUploadFiles, obj);
+      });
+    } else {
+      obj.requestId = runData.id;
+      _getBodyUploadFiles(runData, bodyUploadFiles, obj);
+    }
+  }
+  return bodyUploadFiles;
+}
+
+export function _getBodyUploadFiles(request, bodyUploadFiles, obj) {
+  let body = null;
+  if (request.hashTree && request.hashTree.length > 0 && request.hashTree[0] && request.hashTree[0].body) {
+    obj.requestId = request.hashTree[0].id;
+    body = request.hashTree[0].body;
+  } else if (request.body) {
+    obj.requestId = request.id;
+    body = request.body;
+  }
+  if (body) {
+    if (body.kvs) {
+      body.kvs.forEach(param => {
+        if (param.files) {
+          param.files.forEach(item => {
+            if (item.file) {
+              item.name = item.file.name ? item.file.name : item.name;
+              bodyUploadFiles.push(item.file);
+            }
+          });
+        }
+      });
+    }
+    if (body.binary) {
+      body.binary.forEach(param => {
+        if (param.files) {
+          param.files.forEach(item => {
+            if (item.file) {
+              item.name = item.file.name ? item.file.name : item.name;
+              bodyUploadFiles.push(item.file);
+            }
+          });
+        }
+      });
+    }
+  }
+}
+
+export function handleCtrlSEvent(event, func) {
+  if (event.keyCode === 83 && event.ctrlKey) {
+    // console.log('拦截到 ctrl + s');//ctrl+s
+    func();
+    event.preventDefault();
+    event.returnValue = false;
+    return false;
+  }
+}
+
+export function handleCtrlREvent(event, func) {
+  if (event.keyCode === 82 && event.ctrlKey) {
+    func();
+    event.preventDefault();
+    event.returnValue = false;
+    return false;
+  }
+}
+
+export function strMapToObj(strMap) {
+  if (strMap) {
+    let obj = Object.create(null);
+    for (let [k, v] of strMap) {
+      obj[k] = v;
+    }
+    return obj;
+  }
+  return null;
+}
+
+export function objToStrMap(obj) {
+  let strMap = new Map();
+  for (let k of Object.keys(obj)) {
+    strMap.set(k, obj[k]);
+  }
+  return strMap;
+}
+
+export function setColor(a, b, c, d, e) {
+  // 顶部菜单背景色
+  document.body.style.setProperty('--color', a);
+  document.body.style.setProperty('--color_shallow', b);
+  // 首页颜色
+  document.body.style.setProperty('--count_number', c);
+  document.body.style.setProperty('--count_number_shallow', d);
+  // 主颜色
+  document.body.style.setProperty('--primary_color', e);
+}
+
+export function setDefaultTheme() {
+  setColor(ORIGIN_COLOR, ORIGIN_COLOR_SHALLOW, COUNT_NUMBER, COUNT_NUMBER_SHALLOW, PRIMARY_COLOR);
+}
+
+export function publicKeyEncrypt(input, publicKey) {
+
+  let jsencrypt = new JSEncrypt({default_key_size: 1024});
+  jsencrypt.setPublicKey(publicKey);
+
+  return jsencrypt.encrypt(input);
+}
+
+export function getNodePath(id, moduleOptions) {
+  for (let i = 0; i < moduleOptions.length; i++) {
+    let item = moduleOptions[i];
+    if (id === item.id) {
+      return item.path;
+    }
+  }
+  return '';
+}
+
+export function getDefaultTableHeight() {
+  return document.documentElement.clientHeight - 200;
+}
+
+export function fullScreenLoading(component) {
+  return component.$loading({
+    lock: true,
+    text: '资源切换中...',
+    spinner: 'el-icon-loading',
+    background: 'rgba(218,218,218,0.6)',
+    customClass: 'ms-full-loading'
+  });
+}
+
+export function stopFullScreenLoading(loading, timeout) {
+  timeout = timeout ? timeout : 2000;
+  setTimeout(() => {
+    loading.close();
+  }, timeout);
+}
+
+export function getShareId() {
+  //let herfUrl = 'http://localhost:8080/sharePlanReport?shareId=bf9496ac-8577-46b4-adf9-9c7e93dd06a8';
+  let herfUrl = window.location.href;
+  if (herfUrl.indexOf('shareId=') > -1) {
+    let shareId = '';
+    new URL(herfUrl).searchParams.forEach((value, key) => {
+      if (key === 'shareId') {
+        shareId = value;
+      }
+    });
+    return shareId;
+  } else {
+    if (herfUrl.indexOf("?") > 0) {
+      let paramArr = herfUrl.split("?");
+      if (paramArr.length > 1) {
+        let shareId = paramArr[1];
+        if (shareId.indexOf("#") > 0) {
+          shareId = shareId.split("#")[0];
+        }
+        return shareId;
+      }
+    }
+  }
+  return "";
+}
+
+export function setCurTabId(vueObj, tab, ref) {
+  vueObj.$nextTick(() => {
+    if (vueObj.$refs && vueObj.$refs[ref]) {
+      let index = tab.index ? Number.parseInt(tab.index) : vueObj.tabs.length;
+      let cutEditTab = vueObj.$refs[ref][index - 1];
+      let curTabId = cutEditTab ? cutEditTab.tabId : null;
+      vueObj.$store.commit('setCurTabId', curTabId);
+    }
+  });
+}
+
+export function getTranslateOptions(data) {
+  let options = [];
+  data.forEach(i => {
+    let option = {};
+    Object.assign(option, i)
+    option.text = i18n.t(option.text);
+    options.push(option);
+  });
+  return options;
+}
+
+export function parseTag(data) {
+  data.forEach(item => {
+    try {
+      let tags = JSON.parse(item.tags);
+      if (tags instanceof Array) {
+        item.tags = tags ? tags : [];
+      } else {
+        item.tags = tags ? [tags + ''] : [];
+      }
+    } catch (e) {
+      item.tags = [];
+    }
+  });
+}

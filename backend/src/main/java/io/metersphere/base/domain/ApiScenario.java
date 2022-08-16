@@ -1,7 +1,8 @@
 package io.metersphere.base.domain;
 
-import java.io.Serializable;
 import lombok.Data;
+
+import java.io.Serializable;
 
 @Data
 public class ApiScenario implements Serializable {
@@ -9,7 +10,7 @@ public class ApiScenario implements Serializable {
 
     private String projectId;
 
-    private String tagId;
+    private String tags;
 
     private String userId;
 
@@ -27,11 +28,7 @@ public class ApiScenario implements Serializable {
 
     private Integer stepTotal;
 
-    private String followPeople;
-
     private String schedule;
-
-    private String description;
 
     private Long createTime;
 
@@ -43,7 +40,33 @@ public class ApiScenario implements Serializable {
 
     private String reportId;
 
-    private String scenarioDefinition;
+    private Integer num;
+
+    private String originalState;
+
+    private String customNum;
+
+    private String createUser;
+
+    private Integer version;
+
+    private Long deleteTime;
+
+    private String deleteUserId;
+
+    private Integer executeTimes;
+
+    private Long order;
+
+    private String environmentType;
+
+    private String environmentGroupId;
+
+    private String versionId;
+
+    private String refId;
+
+    private Boolean latest;
 
     private static final long serialVersionUID = 1L;
 }

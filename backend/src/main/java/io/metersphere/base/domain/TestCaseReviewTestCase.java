@@ -21,5 +21,9 @@ public class TestCaseReviewTestCase implements Serializable {
 
     private Long updateTime;
 
+    private String createUser;
+
+    private Long order;
+
     private static final long serialVersionUID = 1L;
 }

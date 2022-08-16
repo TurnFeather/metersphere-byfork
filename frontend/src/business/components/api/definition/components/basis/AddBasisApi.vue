@@ -59,9 +59,9 @@
   import MsDialogFooter from "../../../../common/components/MsDialogFooter";
   import {WORKSPACE_ID} from '../../../../../../common/js/constants';
   import {REQ_METHOD} from "../../model/JsonData";
-  import {getCurrentUser, getUUID} from "../../../../../../common/js/utils";
+  import {getCurrentProjectID, getCurrentUser} from "../../../../../../common/js/utils";
   import {createComponent, Request} from "../jmeter/components";
-  import HeaderManager from "../jmeter/components/configurations/header-manager";
+  import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
 
   export default {
     name: "MsAddBasisApi",
@@ -73,39 +73,72 @@
       },
     },
     data() {
+      let validateURL = (rule, value, callback) => {
+        if (!this.httpForm.path.startsWith("/") || this.httpForm.path.match(/\s/) != null) {
+          callback(this.$t('api_test.definition.request.path_valid_info'));
+        }
+        callback();
+      };
       return {
-        httpForm: {},
+        httpForm: {environmentId: ""},
         httpVisible: false,
         currentModule: {},
-        projectId: "",
         maintainerOptions: [],
         rule: {
           name: [
             {required: true, message: this.$t('test_track.case.input_name'), trigger: 'blur'},
-            {max: 50, message: this.$t('test_track.length_less_than') + '50', trigger: 'blur'}
+            {max: 100, message: this.$t('test_track.length_less_than') + '100', trigger: 'blur'}
           ],
-          path: [{required: true, message: this.$t('api_test.definition.request.path_info'), trigger: 'blur'}],
+          path: [{required: true, message: this.$t('api_test.definition.request.path_info'), trigger: 'blur'}, {validator: validateURL, trigger: 'blur'}],
           userId: [{required: true, message: this.$t('test_track.case.input_maintainer'), trigger: 'change'}],
         },
         value: REQ_METHOD[0].id,
         options: REQ_METHOD,
       }
-    }
-    ,
+    },
+    computed: {
+      projectId() {
+        return getCurrentProjectID();
+      },
+    },
     methods: {
+      compatibleHistory(stepArray) {
+        if (stepArray) {
+          for (let i in stepArray) {
+            if (!stepArray[i].clazzName) {
+              stepArray[i].clazzName = TYPE_TO_C.get(stepArray[i].type);
+            }
+            if (stepArray[i] && stepArray[i].authManager && !stepArray[i].authManager.clazzName) {
+              stepArray[i].authManager.clazzName = TYPE_TO_C.get(stepArray[i].authManager.type);
+            }
+            if (stepArray[i].hashTree && stepArray[i].hashTree.length > 0) {
+              this.compatibleHistory(stepArray[i].hashTree);
+            }
+          }
+        }
+      },
       saveApi(saveAs) {
         this.$refs['httpForm'].validate((valid) => {
           if (valid) {
+            if (this.httpForm.path && this.httpForm.path.match(/\s/) != null) {
+              this.$error(this.$t("api_test.definition.request.path_valid_info"));
+              return false;
+            }
             let bodyFiles = [];
             let path = "/api/definition/create";
             this.setParameter();
+            // 历史数据兼容处理
+            if (this.httpForm.request) {
+              this.httpForm.request.clazzName = TYPE_TO_C.get(this.httpForm.request.type);
+              this.compatibleHistory(this.httpForm.request.hashTree);
+            }
             this.result = this.$fileUpload(path, null, bodyFiles, this.httpForm, () => {
               this.httpVisible = false;
               if (saveAs) {
                 this.httpForm.request = JSON.stringify(this.httpForm.request);
-                this.$parent.saveAsEdit(this.httpForm);
+                this.$emit('saveAsEdit', this.httpForm);
               } else {
-                this.$parent.refresh(this.currentModule);
+                this.$emit('refresh');
               }
             });
           } else {
@@ -139,9 +172,12 @@
           this.httpForm.request.method = this.httpForm.method;
           this.httpForm.request.path = this.httpForm.path;
         }
-        if (this.currentModule != null) {
+        if (this.currentModule != null && this.currentModule.id) {
           this.httpForm.modulePath = this.currentModule.method != undefined ? this.currentModule.method : null;
           this.httpForm.moduleId = this.currentModule.id;
+        } else {
+          this.httpForm.modulePath = this.$t("commons.module_title");
+          this.httpForm.moduleId = "default-module";
         }
 
       },
@@ -163,15 +199,13 @@
         this.httpForm.request = createComponent("DubboSampler");
       },
       getMaintainerOptions() {
-        let workspaceId = localStorage.getItem(WORKSPACE_ID);
-        this.$post('/user/ws/member/tester/list', {workspaceId: workspaceId}, response => {
+        this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
           this.maintainerOptions = response.data;
         });
       },
-      open(currentModule, projectId) {
+      open(currentModule) {
         this.httpForm = {method: REQ_METHOD[0].id, userId: getCurrentUser().id};
         this.currentModule = currentModule;
-        this.projectId = projectId;
         this.getMaintainerOptions();
         this.httpVisible = true;
       }

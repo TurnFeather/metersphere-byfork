@@ -1,10 +1,9 @@
 package io.metersphere.base.domain;
 
+import java.io.Serializable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
-
-import java.io.Serializable;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -13,6 +12,10 @@ public class LoadTestReportWithBLOBs extends LoadTestReport implements Serializa
     private String description;
 
     private String loadConfiguration;
+
+    private String jmxContent;
+
+    private String advancedConfiguration;
 
     private static final long serialVersionUID = 1L;
 }

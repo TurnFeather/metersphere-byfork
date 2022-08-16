@@ -50,6 +50,10 @@ export function cronValidate(cronExpression ){
       return false;
     }
 
+    if (cronParams[3] === cronParams[5] && cronParams[5] === '?') {
+      return false;
+    }
+
     //Check year param
     if (cronParams.length == 7) {
       if (!checkYearField(cronParams[6])) {
@@ -79,8 +83,8 @@ function checkField(secondsField, minimal, maximal) {
     try {
       var startVal = parseInt(startValue, 10);
       var endVal = parseInt(endValue, 10);
-
-      return endVal > startVal;
+      //return endVal > startVal;
+      return true;
     } catch (e) {
       return false;
     }
@@ -312,25 +316,11 @@ function checkListField(value, minimal, maximal ) {
     values[j] = st[j];
   }
 
-  var previousValue = -1;
-
   for (var i= 0; i < values.length; i++) {
     var currentValue = values[i];
 
     if (!checkIntValue(currentValue, minimal, maximal, true)) {
       return false;
-    }
-
-    try {
-      var val = parseInt(currentValue, 10);
-
-      if (val <= previousValue) {
-        return false;
-      } else {
-        previousValue = val;
-      }
-    } catch (e) {
-      // we have always an int
     }
   }
 

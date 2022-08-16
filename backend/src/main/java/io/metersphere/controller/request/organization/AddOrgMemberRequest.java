@@ -9,7 +9,7 @@ import java.util.List;
 @Setter
 public class AddOrgMemberRequest {
 
-    private String organizationId;
     private List<String> userIds;
     private List<String> roleIds;
+    private List<String> groupIds;
 }

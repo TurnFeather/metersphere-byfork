@@ -1,151 +1,174 @@
 <template>
   <div class="card-container">
-    <el-card class="card-content" v-loading="result.loading">
-      <template v-slot:header>
-        <ms-table-header :is-tester-permission="true" :condition.sync="condition" @search="initTableData"
-                         :show-create="false" :tip="$t('commons.search_by_name_or_id')">
-          <template v-slot:title>
-            <node-breadcrumb class="table-title" :nodes="selectParentNodes" @refresh="refresh"
-                             :title="$t('test_track.review_view.all_case')"/>
-          </template>
-          <template v-slot:button>
-            <ms-table-button :is-tester-permission="true" icon="el-icon-video-play"
-                             :content="$t('test_track.review_view.start_review')" @click="startReview"/>
-            <ms-table-button :is-tester-permission="true" icon="el-icon-connection"
-                             :content="$t('test_track.review_view.relevance_case')"
-                             @click="$emit('openTestReviewRelevanceDialog')"/>
-          </template>
-        </ms-table-header>
+    <ms-table-header :tester-permission="true" :condition.sync="condition" @search="initTableData"
+                     :show-create="false" :tip="$t('commons.search_by_name_or_id')">
+      <template v-slot:button>
+        <ms-table-button v-permission="['PROJECT_TRACK_REVIEW:READ+REVIEW']" icon="el-icon-video-play"
+                         :content="$t('test_track.review_view.start_review')" @click="startReview"/>
+        <ms-table-button v-permission="['PROJECT_TRACK_REVIEW:READ+RELEVANCE_OR_CANCEL']" icon="el-icon-connection"
+                         :content="$t('test_track.review_view.relevance_case')"
+                         @click="$emit('openTestReviewRelevanceDialog')"/>
+
       </template>
+    </ms-table-header>
 
-      <executor-edit ref="executorEdit" :select-ids="new Set(Array.from(this.selectRows).map(row => row.id))"
-                     @refresh="initTableData"/>
-      <status-edit ref="statusEdit" :plan-id="reviewId"
-                   :select-ids="new Set(Array.from(this.selectRows).map(row => row.id))" @refresh="initTableData"/>
-
-      <el-table
-        class="adjust-table"
-        border
-        @select-all="handleSelectAll"
-        @filter-change="filter"
-        @sort-change="sort"
-        @select="handleSelectionChange"
-        row-key="id"
-        @row-click="showDetail"
-        :data="tableData">
-
-        <el-table-column
-          type="selection"/>
-        <el-table-column width="40" :resizable="false" align="center">
-          <template v-slot:default="scope">
-            <show-more-btn :is-show="scope.row.showMore" :buttons="buttons" :size="selectRows.size"/>
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="num"
+    <executor-edit ref="executorEdit" :select-ids="new Set(Array.from(this.selectRows).map(row => row.id))"
+                   @refresh="initTableData"/>
+    <status-edit ref="statusEdit" :plan-id="reviewId"
+                 :select-ids="new Set(Array.from(this.selectRows).map(row => row.id))" @refresh="initTableData"/>
+    <ms-table
+      v-loading="result.loading"
+      :field-key="tableHeaderKey"
+      :data="tableData"
+      :condition="condition"
+      :total="total"
+      :page-size.sync="pageSize"
+      :operators="operators"
+      :screen-height="screenHeight"
+      :batch-operators="buttons"
+      @handlePageChange="initTableData"
+      @handleRowClick="showDetail"
+      :fields.sync="fields"
+      :remember-order="true"
+      :enable-order-drag="enableOrderDrag"
+      :row-order-func="editTestReviewTestCaseOrder"
+      :row-order-group-id="reviewId"
+      @refresh="initTableData"
+      ref="table"
+    >
+      <span v-for="item in fields" :key="item.key">
+        <ms-table-column
+          v-if="item.id === 'num'"
+          prop="customNum"
           sortable="custom"
+          :fields-width="fieldsWidth"
           :label="$t('commons.id')"
-          show-overflow-tooltip>
-        </el-table-column>
-        <el-table-column
+          min-width="120px"/>
+
+        <ms-table-column
           prop="name"
+          :field="item"
+          sortable="custom"
+          :fields-width="fieldsWidth"
           :label="$t('commons.name')"
-          show-overflow-tooltip>
-        </el-table-column>
-        <el-table-column
+          min-width="120px"/>
+
+        <ms-table-column
+          v-if="versionEnable"
+          prop="versionId"
+          :field="item"
+          :filters="versionFilters"
+          :fields-width="fieldsWidth"
+          :label="$t('commons.version')"
+          min-width="120px">
+          <template v-slot:default="scope">
+            <span>{{ scope.row.versionName }}</span>
+          </template>
+        </ms-table-column>
+
+        <ms-table-column
           prop="priority"
+          :field="item"
+          :fields-width="fieldsWidth"
           :filters="priorityFilters"
-          column-key="priority"
+          sortable="custom"
+          min-width="120px"
           :label="$t('test_track.case.priority')">
           <template v-slot:default="scope">
             <priority-table-item :value="scope.row.priority" ref="priority"/>
           </template>
-        </el-table-column>
+        </ms-table-column>
 
-        <el-table-column
+        <ms-table-column
           prop="type"
+          :field="item"
+          :fields-width="fieldsWidth"
           :filters="typeFilters"
-          column-key="type"
-          :label="$t('test_track.case.type')"
-          show-overflow-tooltip>
+          min-width="120px"
+          :label="$t('test_track.case.type')">
           <template v-slot:default="scope">
             <type-table-item :value="scope.row.type"/>
           </template>
-        </el-table-column>
+        </ms-table-column>
 
-        <el-table-column
-          prop="method"
-          :filters="methodFilters"
-          column-key="method"
-          :label="$t('test_track.case.method')"
-          show-overflow-tooltip>
-          <template v-slot:default="scope">
-            <method-table-item :value="scope.row.method"/>
-          </template>
-        </el-table-column>
+        <ms-table-column
+          prop="maintainerName"
+          :field="item"
+          :fields-width="fieldsWidth"
+          :label="$t('custom_field.case_maintainer')"
+          min-width="120px"/>
 
-        <el-table-column
+        <ms-table-column
           prop="nodePath"
+          :field="item"
+          :fields-width="fieldsWidth"
           :label="$t('test_track.case.module')"
-          show-overflow-tooltip>
-        </el-table-column>
+          min-width="120px"/>
 
-        <el-table-column
+        <ms-table-column
           prop="projectName"
-          :label="$t('test_track.review.review_project')"
-          show-overflow-tooltip>
-        </el-table-column>
+          :field="item"
+          :fields-width="fieldsWidth"
+          :label="$t('test_track.plan.plan_project')"
+          min-width="120px"/>
 
-        <el-table-column
+        <ms-table-column
           prop="reviewerName"
+          :field="item"
+          :fields-width="fieldsWidth"
           :label="$t('test_track.review.reviewer')"
-          show-overflow-tooltip
-        >
-        </el-table-column>
+          min-width="120px"/>
 
-        <el-table-column
+        <ms-table-column
+          prop="reviewStatus"
+          :field="item"
+          :fields-width="fieldsWidth"
           :filters="statusFilters"
-          column-key="status"
+          min-width="120px"
           :label="$t('test_track.review_view.execute_result')">
-          <template v-slot:default="scope">
-            <span class="el-dropdown-link">
-              <review-status :value="scope.row.reviewStatus"/>
-            </span>
-          </template>
-        </el-table-column>
+            <template v-slot:default="scope">
+              <span class="el-dropdown-link">
+                <review-status :value="scope.row.reviewStatus"/>
+              </span>
+            </template>
+          </ms-table-column>
 
-        <el-table-column
+        <ms-table-column
           sortable
           prop="updateTime"
+          :field="item"
+          :fields-width="fieldsWidth"
           :label="$t('commons.update_time')"
-          show-overflow-tooltip>
+          min-width="120px">
           <template v-slot:default="scope">
             <span>{{ scope.row.updateTime | timestampFormatDate }}</span>
           </template>
-        </el-table-column>
-        <el-table-column
-          min-width="100"
-          :label="$t('commons.operating')">
-          <template v-slot:default="scope">
-            <ms-table-operator-button :is-tester-permission="true" :tip="$t('commons.edit')" icon="el-icon-edit"
-                                      @exec="handleEdit(scope.row)"/>
-            <ms-table-operator-button :is-tester-permission="true" :tip="$t('test_track.plan_view.cancel_relevance')"
-                                      icon="el-icon-unlock" type="danger" @exec="handleDelete(scope.row)"/>
-          </template>
-        </el-table-column>
-      </el-table>
+        </ms-table-column>
+      </span>
 
-      <ms-table-pagination :change="search" :current-page.sync="currentPage" :page-size.sync="pageSize"
-                           :total="total"/>
+    </ms-table>
 
-      <test-review-test-case-edit
-        ref="testReviewTestCaseEdit"
-        :search-param="condition"
-        @refresh="initTableData"
-        :is-read-only="isReadOnly"
-        @refreshTable="search"/>
+    <ms-table-pagination :change="search" :current-page.sync="currentPage" :page-size.sync="pageSize"
+                         :total="total"/>
 
-    </el-card>
+    <test-review-test-case-edit
+      ref="testReviewTestCaseEdit"
+      :search-param="condition"
+      :page-num="currentPage"
+      :page-size="pageSize"
+      :next-page-data="nextPageData"
+      :pre-page-data="prePageData"
+      :test-cases="tableData"
+      :is-read-only="isReadOnly"
+      :total="total"
+      @nextPage="nextPage"
+      @prePage="prePage"
+      @refresh="initTableData"
+      @refreshTable="search"/>
+
+
+    <batch-edit ref="batchEdit" @batchEdit="batchEdit"
+                :type-arr="typeArr" :value-arr="valueArr" :dialog-title="$t('test_track.case.batch_edit_case')"/>
   </div>
 </template>
 
@@ -166,32 +189,60 @@ import MsTableButton from "../../../../common/components/MsTableButton";
 import ShowMoreBtn from "../../../case/components/ShowMoreBtn";
 import BatchEdit from "../../../case/components/BatchEdit";
 import MsTablePagination from '../../../../common/pagination/TablePagination';
-import {_filter, _sort, checkoutTestManagerOrTestUser, hasRoles} from "../../../../../../common/js/utils";
 import {TEST_CASE_CONFIGS} from "../../../../common/components/search/search-components";
-import {ROLE_TEST_MANAGER, ROLE_TEST_USER} from "../../../../../../common/js/constants";
 import TestReviewTestCaseEdit from "./TestReviewTestCaseEdit";
 import ReviewStatus from "@/business/components/track/case/components/ReviewStatus";
+import {
+  _handleSelectAll,
+  buildBatchParam, deepClone, getCustomTableWidth, getLastTableSortField,
+  getSelectDataCounts, getTableHeaderWithCustomFields,
+  initCondition,
+  toggleAllSelection
+} from "@/common/js/tableUtils";
+import HeaderCustom from "@/business/components/common/head/HeaderCustom";
+import {Test_Case_Review_Case_List} from "@/business/components/common/model/JsonData";
+import HeaderLabelOperate from "@/business/components/common/head/HeaderLabelOperate";
+import MsTableHeaderSelectPopover from "@/business/components/common/components/table/MsTableHeaderSelectPopover";
+import MsTableColumn from "@/business/components/common/components/table/MsTableColumn";
+import MsTable from "@/business/components/common/components/table/MsTable";
+import {editTestReviewTestCaseOrder, getTestPlanTestCase, getTestReviewTestCase} from "@/network/testCase";
+import {getCurrentProjectID, hasLicense} from "@/common/js/utils";
 
 export default {
   name: "TestReviewTestCaseList",
   components: {
+    HeaderLabelOperate,
+    HeaderCustom,
     MsTableOperatorButton, MsTableOperator, MethodTableItem, TypeTableItem,
     StatusTableItem, PriorityTableItem, StatusEdit,
     ExecutorEdit, MsTipButton, TestReviewTestCaseEdit, MsTableHeader,
-    NodeBreadcrumb, MsTableButton, ShowMoreBtn, BatchEdit, MsTablePagination, ReviewStatus
+    NodeBreadcrumb, MsTableButton, ShowMoreBtn, BatchEdit,
+    MsTablePagination, ReviewStatus, MsTableHeaderSelectPopover,
+    MsTableColumn,
+    MsTable,
   },
   data() {
     return {
+      fields: [],
+      fieldsWidth: getCustomTableWidth('TEST_CASE_REVIEW_FUNCTION_TEST_CASE'),
+      headerItems: Test_Case_Review_Case_List,
+      screenHeight: 'calc(100vh - 280px)',
+      tableLabel: [],
       result: {},
       condition: {},
       tableData: [],
+      nextPageData: null,
+      prePageData: null,
       currentPage: 1,
       pageSize: 10,
       total: 0,
+      enableOrderDrag: true,
       selectRows: new Set(),
       testReview: {},
       isReadOnly: false,
       isTestManagerOrTestUser: false,
+      selectDataCounts: 0,
+      tableHeaderKey: 'TEST_CASE_REVIEW_FUNCTION_TEST_CASE',
       priorityFilters: [
         {text: 'P0', value: 'P0'},
         {text: 'P1', value: 'P1'},
@@ -208,78 +259,170 @@ export default {
         {text: this.$t('commons.api'), value: 'api'}
       ],
       statusFilters: [
-        {text: this.$t('test_track.case.status_prepare'), value: 'Prepare'},
-        {text: this.$t('test_track.case.status_pass'), value: 'Pass'},
-        {text: this.$t('test_track.case.status_un_pass'), value: 'UnPass'},
+        {text: this.$t('test_track.review.prepare'), value: 'Prepare'},
+        {text: this.$t('test_track.review.pass'), value: 'Pass'},
+        {text: this.$t('test_track.review.un_pass'), value: 'UnPass'},
       ],
       showMore: false,
       buttons: [
         {
+          name: this.$t('test_track.case.batch_edit_case'), handleClick: this.handleEditBatch
+        },
+        {
           name: this.$t('test_track.case.batch_unlink'), handleClick: this.handleDeleteBatch
         }
       ],
+      operators: [
+        {
+          tip: this.$t('commons.edit'), icon: "el-icon-edit",
+          exec: this.handleEdit,
+          permissions: ['PROJECT_TRACK_CASE:READ+EDIT']
+        },
+        {
+          tip: this.$t('test_track.plan_view.cancel_relevance'), icon: "el-icon-unlock", type: "danger",
+          exec: this.handleDelete,
+          permissions: ['PROJECT_TRACK_REVIEW:READ+RELEVANCE_OR_CANCEL']
+        }
+      ],
       typeArr: [
-        {id: 'status', name: this.$t('test_track.plan_view.execute_result')},
-        {id: 'executor', name: this.$t('test_track.plan_view.executor')},
+        {id: 'status', name: this.$t('test_track.review_view.execute_result')},
       ],
       valueArr: {
-        executor: [],
         status: [
-          {name: this.$t('test_track.plan_view.pass'), id: 'Pass'},
-          {name: this.$t('test_track.plan_view.failure'), id: 'Failure'},
-          {name: this.$t('test_track.plan_view.blocking'), id: 'Blocking'},
-          {name: this.$t('test_track.plan_view.skip'), id: 'Skip'}
+          {name: this.$t('test_track.review.prepare'), id: 'Prepare'},
+          {name: this.$t('test_track.review.pass'), id: 'Pass'},
+          {name: this.$t('test_track.review.un_pass'), id: 'UnPass'},
         ]
       },
-    }
+      versionFilters: []
+    };
   },
   props: {
     reviewId: {
       type: String
     },
-    selectNodeIds: {
-      type: Array
+    currentVersion: {
+      type: String
     },
-    selectParentNodes: {
-      type: Array
+    versionEnable: {
+      type: Boolean,
+      default: false
     }
   },
   watch: {
     reviewId() {
+      this.$store.commit('setTestReviewSelectNodeIds', []);
       this.refreshTableAndReview();
     },
     selectNodeIds() {
       this.search();
+    },
+    condition() {
+      this.$emit('setCondition', this.condition);
+    },
+    currentVersion() {
+      this.condition.versionId = this.currentVersion;
+      this.initTableData();
     }
   },
+  computed: {
+    selectNodeIds() {
+      return this.$store.state.testReviewSelectNodeIds;
+    },
+    editTestReviewTestCaseOrder() {
+      return editTestReviewTestCaseOrder;
+    }
+  },
+  created() {
+    this.condition.orders = getLastTableSortField(this.tableHeaderKey);
+  },
   mounted() {
+    this.$emit('setCondition', this.condition);
     this.refreshTableAndReview();
-    this.isTestManagerOrTestUser = checkoutTestManagerOrTestUser();
+    this.isTestManagerOrTestUser = true;
+    this.initTableHeader();
+    this.getVersionOptions();
   },
   methods: {
-    initTableData() {
+    nextPage() {
+      this.currentPage++;
+      this.initTableData(() => {
+        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[0], this.tableData);
+      });
+    },
+    prePage() {
+      this.currentPage--;
+      this.initTableData(() => {
+        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[this.tableData.length - 1], this.tableData);
+      });
+    },
+    initTableHeader() {
+      this.result.loading = true;
+      this.fields = getTableHeaderWithCustomFields(this.tableHeaderKey, []);
+      this.result.loading = false;
+      setTimeout(this.$refs.table.reloadTable, 200);
+    },
+    customHeader() {
+      const list = deepClone(this.tableLabel);
+      this.$refs.headerCustom.open(list);
+    },
+    initTableData(callback) {
+      initCondition(this.condition, this.condition.selectAll);
       if (this.reviewId) {
         this.condition.reviewId = this.reviewId;
       }
-      if (this.selectNodeIds && this.selectNodeIds.length > 0) {
-        this.condition.nodeIds = this.selectNodeIds;
+      if (this.clickType) {
+        if (this.status == 'default') {
+          this.condition.status = this.clickType;
+        } else {
+          this.condition.status = null;
+        }
+        this.status = 'all';
       }
+      this.enableOrderDrag = (this.condition.orders && this.condition.orders.length) > 0 ? false : true;
+
+      this.condition.nodeIds = this.selectNodeIds;
       if (this.reviewId) {
-        this.result = this.$post(this.buildPagePath('/test/review/case/list'), this.condition, response => {
-          let data = response.data;
+        getTestReviewTestCase(this.currentPage, this.pageSize, this.condition, (data) => {
           this.total = data.itemCount;
           this.tableData = data.listObject;
-          this.selectRows.clear();
+
+        });
+      }
+      setTimeout(this.$refs.table.reloadTable, 200);
+    },
+    getNexPageData() {
+      getTestReviewTestCase(this.currentPage * this.pageSize + 1, 1, this.condition, (data) => {
+        if (data.listObject && data.listObject.length > 0) {
+          this.nextPageData = {
+            name: data.listObject[0].name
+          }
+        } else {
+          this.nextPageData = null;
+        }
+      });
+    },
+    getPreData() {
+      // 如果不是第一页并且只有一条数据时，需要调用
+      if (this.currentPage > 1 && this.tableData.length === 1) {
+        getTestReviewTestCase((this.currentPage - 1) * this.pageSize, 1, this.condition, (data) => {
+          if (data.listObject && data.listObject.length > 0) {
+            this.prePageData = {
+              name: data.listObject[0].name
+            }
+          } else {
+            this.prePageData = null;
+          }
         });
       }
     },
     showDetail(row, event, column) {
       this.isReadOnly = true;
-      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(row);
+      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(row, this.tableData);
     },
     refresh() {
       this.condition = {components: TEST_CASE_CONFIGS};
-      this.selectRows.clear();
+      this.tableClear();
       this.$emit('refresh');
     },
     refreshTableAndReview() {
@@ -287,12 +430,10 @@ export default {
       this.initTableData();
     },
     refreshTestReviewRecent() {
-      if (hasRoles(ROLE_TEST_USER, ROLE_TEST_MANAGER)) {
-        let param = {};
-        param.id = this.reviewId;
-        param.updateTime = Date.now();
-        // this.$post('/test/case/review/edit', param);
-      }
+      let param = {};
+      param.id = this.reviewId;
+      param.updateTime = Date.now();
+      // this.$post('/test/case/review/edit', param);
     },
     search() {
       this.initTableData();
@@ -302,10 +443,7 @@ export default {
     },
     handleEdit(testCase, index) {
       this.isReadOnly = false;
-      if (!checkoutTestManagerOrTestUser()) {
-        this.isReadOnly = true;
-      }
-      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(testCase);
+      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(testCase, this.tableData);
     },
     handleDelete(testCase) {
       this.$alert(this.$t('test_track.plan_view.confirm_cancel_relevance') + ' ' + testCase.name + " ？", '', {
@@ -322,9 +460,11 @@ export default {
         confirmButtonText: this.$t('commons.confirm'),
         callback: (action) => {
           if (action === 'confirm') {
-            let ids = Array.from(this.selectRows).map(row => row.id);
-            this.$post('/test/review/case/batch/delete', {ids: ids, reviewId: this.reviewId}, () => {
-              this.selectRows.clear();
+            let param = buildBatchParam(this, this.$refs.table.selectIds);
+            param.ids = this.$refs.table.selectIds;
+            param.reviewId = this.reviewId;
+            this.$post('/test/review/case/batch/delete', param, () => {
+              this.tableClear();
               this.$emit("refresh");
               this.$success(this.$t('test_track.cancel_relevance_success'));
             });
@@ -339,27 +479,22 @@ export default {
         this.$success(this.$t('test_track.cancel_relevance_success'));
       });
     },
-    handleSelectAll(selection) {
-      if (selection.length > 0) {
-        this.tableData.forEach(item => {
-          this.$set(item, "showMore", true);
-          this.selectRows.add(item);
-        });
-      } else {
-        this.selectRows.clear();
-        this.tableData.forEach(row => {
-          this.$set(row, "showMore", false);
-        })
-      }
+    handleEditBatch() {
+      this.$refs.batchEdit.open(this.condition.selectAll ? this.total : this.$refs.table.selectRows.size);
     },
-    handleSelectionChange(selection, row) {
-      if (this.selectRows.has(row)) {
-        this.$set(row, "showMore", false);
-        this.selectRows.delete(row);
-      } else {
-        this.$set(row, "showMore", true);
-        this.selectRows.add(row);
-      }
+    batchEdit(form) {
+      let reviewId = this.reviewId;
+      let param = buildBatchParam(this, this.$refs.table.selectIds);
+      param.ids = Array.from(this.$refs.table.selectRows).map(row => row.caseId);
+      param[form.type] = form.value;
+      param.reviewId = reviewId;
+      this.$post('/test/review/case/batch/edit/status', param, () => {
+        this.tableClear();
+        this.status = '';
+        this.$post('/test/case/review/edit/status/' + reviewId);
+        this.$success(this.$t('commons.save_success'));
+        this.$emit('refresh');
+      });
     },
     openTestReport() {
       this.$refs.testReportTemplateList.open(this.reviewId);
@@ -372,31 +507,52 @@ export default {
         });
       }
     },
-    filter(filters) {
-      _filter(filters, this.condition);
-      this.initTableData();
-    },
-    sort(column) {
-      // 每次只对一个字段排序
-      if (this.condition.orders) {
-        this.condition.orders = [];
-      }
-      _sort(column, this.condition);
-      this.initTableData();
-    },
     startReview() {
       if (this.tableData.length !== 0) {
         this.isReadOnly = false;
-        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[0]);
+        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[0], this.tableData);
       } else {
         this.$warning(this.$t('test_track.review.no_link_case'));
       }
-    }
+    },
+    isSelectDataAll(data) {
+      this.condition.selectAll = data;
+      //设置勾选
+      toggleAllSelection(this.$refs.caseTable, this.tableData, this.selectRows);
+      //显示隐藏菜单
+      _handleSelectAll(this, this.tableData, this.tableData, this.selectRows);
+      //设置未选择ID(更新)
+      this.condition.unSelectIds = [];
+      //更新统计信息
+      this.selectDataCounts = getSelectDataCounts(this.condition, this.total, this.selectRows);
+    },
+    tableClear() {
+      if (this.$refs.table) {
+        this.$refs.table.clear();
+      }
+    },
+    getVersionOptions() {
+      if (hasLicense()) {
+        this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+          this.versionFilters = response.data.map(u => {
+            return {text: u.name, value: u.id};
+          });
+        });
+      }
+    },
   }
-}
+};
 </script>
 
 <style scoped>
+/deep/ .table-title {
+  height: 0px;
+  font-weight: bold;
+  font-size: 0px;
+}
 
+.ms-table-header {
+  margin-bottom: 10px;
+}
 </style>
 

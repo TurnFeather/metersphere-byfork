@@ -1,7 +1,8 @@
 package io.metersphere.base.domain;
 
-import java.io.Serializable;
 import lombok.Data;
+
+import java.io.Serializable;
 
 @Data
 public class LoadTest implements Serializable {
@@ -22,6 +23,22 @@ public class LoadTest implements Serializable {
     private String testResourcePoolId;
 
     private String userId;
+
+    private Integer num;
+
+    private String createUser;
+
+    private Integer scenarioVersion;
+
+    private String scenarioId;
+
+    private Long order;
+
+    private String refId;
+
+    private String versionId;
+
+    private Boolean latest;
 
     private static final long serialVersionUID = 1L;
 }

@@ -1,10 +1,14 @@
 package io.metersphere.job.sechedule;
 
+import io.metersphere.base.domain.Schedule;
 import io.metersphere.commons.utils.LogUtil;
 import org.quartz.*;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component
 public class ScheduleManager {
@@ -121,14 +125,6 @@ public class ScheduleManager {
                 trigger = (CronTrigger) triggerBuilder.build();// 创建Trigger对象
 
                 scheduler.rescheduleJob(triggerKey, trigger);// 修改一个任务的触发时间
-                /** 方式一 ：调用 rescheduleJob 结束 */
-
-                /** 方式二：先删除，然后在创建一个新的Job */
-                // JobDetail jobDetail = sched.getJobDetail(JobKey.jobKey(jobName, jobGroupName));
-                // Class<? extends Job> jobClass = jobDetail.getJobClass();
-                // removeJob(jobName, jobGroupName, triggerName, triggerGroupName);
-                // addJob(jobName, jobGroupName, triggerName, triggerGroupName, jobClass, cron);
-                /** 方式二 ：先删除，然后在创建一个新的Job */
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -284,11 +280,31 @@ public class ScheduleManager {
         addOrUpdateCronJob(jobKey, triggerKey, jobClass, cron, null);
     }
 
-    public JobDataMap getDefaultJobDataMap(String resourceId, String expression, String userId) {
+    public JobDataMap getDefaultJobDataMap(Schedule schedule, String expression, String userId) {
         JobDataMap jobDataMap = new JobDataMap();
-        jobDataMap.put("resourceId", resourceId);
+        jobDataMap.put("resourceId", schedule.getResourceId());
         jobDataMap.put("expression", expression);
         jobDataMap.put("userId", userId);
+        jobDataMap.put("config", schedule.getConfig());
+
         return jobDataMap;
+    }
+
+    public Object getCurrentlyExecutingJobs(){
+        Map<String, String> returnMap = new HashMap<>();
+        try {
+            List<JobExecutionContext> currentJobs = scheduler.getCurrentlyExecutingJobs();
+            for (JobExecutionContext jobCtx : currentJobs) {
+                String jobName = jobCtx.getJobDetail().getKey().getName();
+                String groupName = jobCtx.getJobDetail().getJobClass().getName();
+
+                returnMap.put("jobName", jobName);
+                returnMap.put("groupName", groupName);
+            }
+        }catch (Exception e){
+            LogUtil.error(e);
+        }
+
+        return returnMap;
     }
 }

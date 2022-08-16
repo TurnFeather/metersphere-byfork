@@ -1,24 +1,37 @@
 package io.metersphere.track.service;
 
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.util.concurrent.AtomicDouble;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtTestCaseMapper;
+import io.metersphere.base.mapper.ext.ExtTestCaseNodeMapper;
+import io.metersphere.base.mapper.ext.ExtTestCaseReviewTestCaseMapper;
+import io.metersphere.base.mapper.ext.ExtTestPlanTestCaseMapper;
 import io.metersphere.commons.constants.TestCaseConstants;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.BeanUtils;
+import io.metersphere.commons.utils.CommonBeanFactory;
+import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.dto.NodeNumDTO;
 import io.metersphere.exception.ExcelException;
 import io.metersphere.i18n.Translator;
+import io.metersphere.log.utils.ReflexObjectUtil;
+import io.metersphere.log.vo.DetailColumn;
+import io.metersphere.log.vo.OperatingLogDetails;
+import io.metersphere.log.vo.api.ModuleReference;
+import io.metersphere.service.NodeTreeService;
 import io.metersphere.track.dto.TestCaseDTO;
 import io.metersphere.track.dto.TestCaseNodeDTO;
-import io.metersphere.track.request.testcase.DragNodeRequest;
-import io.metersphere.track.request.testcase.QueryNodeRequest;
-import io.metersphere.track.request.testcase.QueryTestCaseRequest;
+import io.metersphere.track.dto.TestPlanCaseDTO;
+import io.metersphere.track.request.testcase.*;
+import io.metersphere.track.request.testplancase.QueryTestPlanCaseRequest;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -29,16 +42,18 @@ import java.util.stream.Collectors;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
-public class TestCaseNodeService {
+public class TestCaseNodeService extends NodeTreeService<TestCaseNodeDTO> {
 
     @Resource
     TestCaseNodeMapper testCaseNodeMapper;
+    @Resource
+    ExtTestCaseNodeMapper extTestCaseNodeMapper;
     @Resource
     TestCaseMapper testCaseMapper;
     @Resource
     TestPlanMapper testPlanMapper;
     @Resource
-    TestPlanTestCaseMapper testPlanTestCaseMapper;
+    ExtTestPlanTestCaseMapper extTestPlanTestCaseMapper;
     @Resource
     ExtTestCaseMapper extTestCaseMapper;
     @Resource
@@ -48,23 +63,32 @@ public class TestCaseNodeService {
     @Resource
     ProjectMapper projectMapper;
     @Resource
-    TestCaseReviewService testCaseReviewService;
-    @Resource
     TestCaseReviewTestCaseMapper testCaseReviewTestCaseMapper;
+    @Resource
+    ExtTestCaseReviewTestCaseMapper extTestCaseReviewTestCaseMapper;
     @Resource
     TestCaseReviewMapper testCaseReviewMapper;
 
-    private static final double LIMIT_POS = 64;
+    public TestCaseNodeService() {
+        super(TestCaseNodeDTO.class);
+    }
 
     public String addNode(TestCaseNode node) {
         validateNode(node);
         node.setCreateTime(System.currentTimeMillis());
         node.setUpdateTime(System.currentTimeMillis());
-        node.setId(UUID.randomUUID().toString());
+        if (StringUtils.isBlank(node.getId())) {
+            node.setId(UUID.randomUUID().toString());
+        }
+        node.setCreateUser(SessionUtils.getUserId());
         double pos = getNextLevelPos(node.getProjectId(), node.getLevel(), node.getParentId());
         node.setPos(pos);
         testCaseNodeMapper.insertSelective(node);
         return node.getId();
+    }
+
+    public List<String> getNodes(String nodeId) {
+        return extTestCaseNodeMapper.getNodes(nodeId);
     }
 
     private void validateNode(TestCaseNode node) {
@@ -95,113 +119,166 @@ public class TestCaseNodeService {
         }
     }
 
-    public List<TestCaseNodeDTO> getNodeTreeByProjectId(String projectId) {
-        TestCaseNodeExample testCaseNodeExample = new TestCaseNodeExample();
-        testCaseNodeExample.createCriteria().andProjectIdEqualTo(projectId);
-        testCaseNodeExample.setOrderByClause("pos asc");
-        List<TestCaseNode> nodes = testCaseNodeMapper.selectByExample(testCaseNodeExample);
-        return getNodeTrees(nodes);
-    }
-
-    public List<TestCaseNodeDTO> getNodeTrees(List<TestCaseNode> nodes) {
-
-        List<TestCaseNodeDTO> nodeTreeList = new ArrayList<>();
-
-        Map<Integer, List<TestCaseNode>> nodeLevelMap = new HashMap<>();
-
-        nodes.forEach(node -> {
-            Integer level = node.getLevel();
-            if (nodeLevelMap.containsKey(level)) {
-                nodeLevelMap.get(level).add(node);
-            } else {
-                List<TestCaseNode> testCaseNodes = new ArrayList<>();
-                testCaseNodes.add(node);
-                nodeLevelMap.put(node.getLevel(), testCaseNodes);
-            }
-        });
-
-        List<TestCaseNode> rootNodes = Optional.ofNullable(nodeLevelMap.get(1)).orElse(new ArrayList<>());
-        rootNodes.forEach(rootNode -> nodeTreeList.add(buildNodeTree(nodeLevelMap, rootNode)));
-
-        return nodeTreeList;
-    }
-
-    /**
-     * 递归构建节点树
-     *
-     * @param nodeLevelMap
-     * @param rootNode
-     * @return
-     */
-    private TestCaseNodeDTO buildNodeTree(Map<Integer, List<TestCaseNode>> nodeLevelMap, TestCaseNode rootNode) {
-
-        TestCaseNodeDTO nodeTree = new TestCaseNodeDTO();
-        BeanUtils.copyBean(nodeTree, rootNode);
-        nodeTree.setLabel(rootNode.getName());
-
-        List<TestCaseNode> lowerNodes = nodeLevelMap.get(rootNode.getLevel() + 1);
-        if (lowerNodes == null) {
-            return nodeTree;
+    public TestCaseNode getDefaultNode(String projectId) {
+        TestCaseNodeExample example = new TestCaseNodeExample();
+        example.createCriteria().andProjectIdEqualTo(projectId).andNameEqualTo("未规划用例").andParentIdIsNull();
+        List<TestCaseNode> list = testCaseNodeMapper.selectByExample(example);
+        if (CollectionUtils.isEmpty(list)) {
+            NodeNumDTO record = new NodeNumDTO();
+            record.setId(UUID.randomUUID().toString());
+            record.setCreateUser(SessionUtils.getUserId());
+            record.setName("未规划用例");
+            record.setPos(1.0);
+            record.setLevel(1);
+            record.setCreateTime(System.currentTimeMillis());
+            record.setUpdateTime(System.currentTimeMillis());
+            record.setProjectId(projectId);
+            testCaseNodeMapper.insert(record);
+            record.setCaseNum(0);
+            return record;
+        }else {
+            return list.get(0);
         }
+    }
+    public List<TestCaseNodeDTO> getNodeTreeByProjectId(String projectId) {
+        // 判断当前项目下是否有默认模块，没有添加默认模块
+        this.getDefaultNode(projectId);
+        List<TestCaseNodeDTO> testCaseNodes = extTestCaseNodeMapper.getNodeTreeByProjectId(projectId);
+        QueryTestCaseRequest request = new QueryTestCaseRequest();
+        request.setUserId(SessionUtils.getUserId());
+        request.setProjectId(projectId);
 
-        List<TestCaseNodeDTO> children = Optional.ofNullable(nodeTree.getChildren()).orElse(new ArrayList<>());
-
-        lowerNodes.forEach(node -> {
-            if (node.getParentId() != null && node.getParentId().equals(rootNode.getId())) {
-                children.add(buildNodeTree(nodeLevelMap, node));
-                nodeTree.setChildren(children);
+        //优化：将for循环内的SQL抽出来，只差一次
+        List<String> allModuleIdList = new ArrayList<>();
+        for (TestCaseNodeDTO node : testCaseNodes) {
+            List<String> moduleIds = new ArrayList<>();
+            moduleIds = this.nodeList(testCaseNodes, node.getId(), moduleIds);
+            moduleIds.add(node.getId());
+            for (String moduleId : moduleIds) {
+                if(!allModuleIdList.contains(moduleId)){
+                    allModuleIdList.add(moduleId);
+                }
             }
+        }
+        request.setModuleIds(allModuleIdList);
+        List<Map<String,Object>> moduleCountList = extTestCaseMapper.moduleCountByCollection(request);
+        Map<String,Integer> moduleCountMap = this.parseModuleCountList(moduleCountList);
+        testCaseNodes.forEach(node -> {
+            List<String> moduleIds = new ArrayList<>();
+            moduleIds = this.nodeList(testCaseNodes, node.getId(), moduleIds);
+            moduleIds.add(node.getId());
+            int countNum = 0;
+            for (String moduleId : moduleIds) {
+                if(moduleCountMap.containsKey(moduleId)){
+                    countNum += moduleCountMap.get(moduleId).intValue();
+                }
+            }
+            node.setCaseNum(countNum);
         });
+        return getNodeTrees(testCaseNodes);
+    }
 
-        return nodeTree;
+    private Map<String, Integer> parseModuleCountList(List<Map<String, Object>> moduleCountList) {
+        Map<String,Integer> returnMap = new HashMap<>();
+        for (Map<String, Object> map: moduleCountList){
+            Object moduleIdObj = map.get("moduleId");
+            Object countNumObj = map.get("countNum");
+            if(moduleIdObj!= null && countNumObj != null){
+                String moduleId = String.valueOf(moduleIdObj);
+                try {
+                    Integer countNumInteger = new Integer(String.valueOf(countNumObj));
+                    returnMap.put(moduleId,countNumInteger);
+                }catch (Exception e){
+                }
+            }
+        }
+        return returnMap;
+    }
+
+    public static List<String> nodeList(List<TestCaseNodeDTO> testCaseNodes, String pid, List<String> list) {
+        for (TestCaseNodeDTO node : testCaseNodes) {
+            //遍历出父id等于参数的id，add进子节点集合
+            if (StringUtils.equals(node.getParentId(), pid)) {
+                list.add(node.getId());
+                //递归遍历下一级
+                nodeList(testCaseNodes, node.getId(), list);
+            }
+        }
+        return list;
     }
 
     public int editNode(DragNodeRequest request) {
         request.setUpdateTime(System.currentTimeMillis());
         checkTestCaseNodeExist(request);
-        List<TestCaseDTO> testCases = QueryTestCaseByNodeIds(request.getNodeIds());
-
-        testCases.forEach(testCase -> {
-            StringBuilder path = new StringBuilder(testCase.getNodePath());
-            List<String> pathLists = Arrays.asList(path.toString().split("/"));
-            pathLists.set(request.getLevel(), request.getName());
-            path.delete(0, path.length());
-            for (int i = 1; i < pathLists.size(); i++) {
-                path = path.append("/").append(pathLists.get(i));
-            }
-            testCase.setNodePath(path.toString());
-        });
-
-        batchUpdateTestCase(testCases);
-
+        if (!CollectionUtils.isEmpty(request.getNodeIds())) {
+            List<TestCaseDTO> testCases = extTestCaseMapper.getForNodeEdit(request.getNodeIds());
+            testCases.forEach(testCase -> {
+                StringBuilder path = new StringBuilder(testCase.getNodePath());
+                List<String> pathLists = Arrays.asList(path.toString().split("/"));
+                pathLists.set(request.getLevel(), request.getName());
+                path.delete(0, path.length());
+                for (int i = 1; i < pathLists.size(); i++) {
+                    path = path.append("/").append(pathLists.get(i));
+                }
+                testCase.setNodePath(path.toString());
+            });
+            batchUpdateTestCase(testCases);
+        }
         return testCaseNodeMapper.updateByPrimaryKeySelective(request);
     }
 
+    /**
+     * 修改用例的 nodePath
+     * @param editNodeIds
+     * @param projectId
+     */
+    public void editCasePathForMinder(List<String> editNodeIds, String projectId) {
+        if (!CollectionUtils.isEmpty(editNodeIds)) {
+            List<TestCaseNodeDTO> nodeTrees = getNodeTrees(extTestCaseNodeMapper.getNodeTreeByProjectId(projectId));
+            List<TestCaseDTO> testCases = extTestCaseMapper.getForNodeEdit(editNodeIds);
+            nodeTrees.forEach(nodeTree -> buildUpdateTestCase(nodeTree, testCases, null, "/", "0", 1));
+            batchUpdateTestCase(testCases);
+        }
+    }
+
     public int deleteNode(List<String> nodeIds) {
-        TestCaseExample testCaseExample = new TestCaseExample();
-        testCaseExample.createCriteria().andNodeIdIn(nodeIds);
-        testCaseMapper.deleteByExample(testCaseExample);
+        if (CollectionUtils.isEmpty(nodeIds)) {
+            return 1;
+        }
+        TestCaseService testCaseService = CommonBeanFactory.getBean(TestCaseService.class);
+        List<String> testCaseIdList = this.selectCaseIdByNodeIds(nodeIds);
+        TestCaseBatchRequest request = new TestCaseBatchRequest();
+        request.setIds(testCaseIdList);
+        testCaseService.deleteToGcBatch(request.getIds());
 
         TestCaseNodeExample testCaseNodeExample = new TestCaseNodeExample();
         testCaseNodeExample.createCriteria().andIdIn(nodeIds);
         return testCaseNodeMapper.deleteByExample(testCaseNodeExample);
     }
 
+    private List<String> selectCaseIdByNodeIds(List<String> nodeIds) {
+        if(CollectionUtils.isEmpty(nodeIds)){
+            return  new ArrayList<>();
+        }else {
+            return extTestCaseMapper.selectIdsByNodeIds(nodeIds);
+        }
+    }
+
     /**
      * 获取当前计划下
      * 有关联数据的节点
      *
-     * @param planId plan id
+     * @param request
      * @return List<TestCaseNodeDTO>
      */
-    public List<TestCaseNodeDTO> getNodeByPlanId(String planId) {
+    public List<TestCaseNodeDTO> getNodeByQueryRequest(QueryTestPlanCaseRequest request) {
 
         List<TestCaseNodeDTO> list = new ArrayList<>();
-        List<String> projectIds = testPlanProjectService.getProjectIdsByPlanId(planId);
+        List<String> projectIds = testPlanProjectService.getProjectIdsByPlanId(request.getPlanId());
         projectIds.forEach(id -> {
             Project project = projectMapper.selectByPrimaryKey(id);
             String name = project.getName();
-            List<TestCaseNodeDTO> nodeList = getNodeDTO(id, planId);
+            List<TestCaseNodeDTO> nodeList = getNodeDTO(id, request);
             TestCaseNodeDTO testCaseNodeDTO = new TestCaseNodeDTO();
             testCaseNodeDTO.setId(project.getId());
             testCaseNodeDTO.setName(name);
@@ -213,46 +290,82 @@ public class TestCaseNodeService {
         return list;
     }
 
-    public List<TestCaseNodeDTO> getNodeByReviewId(String reviewId) {
-        List<TestCaseNodeDTO> list = new ArrayList<>();
-        TestCaseReview testCaseReview = new TestCaseReview();
-        testCaseReview.setId(reviewId);
-        List<Project> project = testCaseReviewService.getProjectByReviewId(testCaseReview);
-        List<String> projectIds = project.stream().map(Project::getId).collect(Collectors.toList());
-        projectIds.forEach(id -> {
-            String name = projectMapper.selectByPrimaryKey(id).getName();
-
-            TestCaseReviewTestCaseExample testCaseReviewTestCaseExample = new TestCaseReviewTestCaseExample();
-            testCaseReviewTestCaseExample.createCriteria().andReviewIdEqualTo(reviewId);
-            List<TestCaseReviewTestCase> testCaseReviewTestCases = testCaseReviewTestCaseMapper.selectByExample(testCaseReviewTestCaseExample);
-            List<String> caseIds = testCaseReviewTestCases.stream().map(TestCaseReviewTestCase::getCaseId).collect(Collectors.toList());
-
-            List<TestCaseNodeDTO> nodeList = getReviewNodeDTO(id, caseIds);
-            TestCaseNodeDTO testCaseNodeDTO = new TestCaseNodeDTO();
-            testCaseNodeDTO.setName(name);
-            testCaseNodeDTO.setLabel(name);
-            testCaseNodeDTO.setChildren(nodeList);
-            list.add(testCaseNodeDTO);
-        });
-        return list;
-
+    /**
+     * 获取当前计划下
+     * 有关联数据的节点
+     *
+     * @param planId plan id
+     * @return List<TestCaseNodeDTO>
+     */
+    public List<TestCaseNodeDTO> getNodeByPlanId(String planId) {
+        List<TestCase> testCases = extTestPlanTestCaseMapper.getTestCaseWithNodeInfo(planId);
+        Map<String, List<String>> projectNodeMap = getProjectNodeMap(testCases);
+        return getNodeTreeWithPruningTree(projectNodeMap);
     }
 
-    private List<TestCaseNodeDTO> getNodeDTO(String projectId, String planId) {
-        TestPlanTestCaseExample testPlanTestCaseExample = new TestPlanTestCaseExample();
-        testPlanTestCaseExample.createCriteria().andPlanIdEqualTo(planId);
-        List<TestPlanTestCase> testPlanTestCases = testPlanTestCaseMapper.selectByExample(testPlanTestCaseExample);
+    public List<TestCaseNodeDTO> getNodeByReviewId(String reviewId) {
+        List<TestCase> testCases = extTestCaseReviewTestCaseMapper.getTestCaseWithNodeInfo(reviewId);
+        Map<String, List<String>> projectNodeMap = getProjectNodeMap(testCases);
+        return getNodeTreeWithPruningTree(projectNodeMap);
+    }
 
+    public List<TestCaseNodeDTO> getNodeTreeWithPruningTree(Map<String, List<String>> projectNodeMap) {
+        List<TestCaseNodeDTO> list = new ArrayList<>();
+        projectNodeMap.forEach((k, v) -> {
+            Project project = projectMapper.selectByPrimaryKey(k);
+            if (project != null) {
+                String name = project.getName();
+                List<TestCaseNodeDTO> testCaseNodes = getNodeTreeWithPruningTree(k, v);
+                TestCaseNodeDTO testCaseNodeDTO = new TestCaseNodeDTO();
+                testCaseNodeDTO.setId(project.getId());
+                testCaseNodeDTO.setName(name);
+                testCaseNodeDTO.setLabel(name);
+                testCaseNodeDTO.setChildren(testCaseNodes);
+                if (!CollectionUtils.isEmpty(testCaseNodes)) {
+                    list.add(testCaseNodeDTO);
+                }
+            }
+        });
+        return list;
+    }
+
+    /**
+     * 获取当前项目下的
+     * @param projectId
+     * @param pruningTreeIds
+     * @return
+     */
+    public List<TestCaseNodeDTO> getNodeTreeWithPruningTree(String projectId, List<String> pruningTreeIds) {
+        List<TestCaseNodeDTO> testCaseNodes = extTestCaseNodeMapper.getNodeTreeByProjectId(projectId);
+        List<TestCaseNodeDTO> nodeTrees = getNodeTrees(testCaseNodes);
+        Iterator<TestCaseNodeDTO> iterator = nodeTrees.iterator();
+        while (iterator.hasNext()) {
+            TestCaseNodeDTO rootNode = iterator.next();
+            if (pruningTree(rootNode, pruningTreeIds)) {
+                iterator.remove();
+            }
+        }
+        return nodeTrees;
+    }
+
+    private Map<String, List<String>> getProjectNodeMap(List<TestCase> testCases) {
+        Map<String, List<String>> projectNodeMap = new HashMap<>();
+        for (TestCase testCase : testCases) {
+            List<String> nodeIds = Optional.ofNullable(projectNodeMap.get(testCase.getProjectId())).orElse(new ArrayList<>());
+            nodeIds.add(testCase.getNodeId());
+            projectNodeMap.put(testCase.getProjectId(), nodeIds);
+        }
+        return projectNodeMap;
+    }
+
+    private List<TestCaseNodeDTO> getNodeDTO(String projectId, QueryTestPlanCaseRequest request) {
+        List<TestPlanCaseDTO> testPlanTestCases = extTestPlanTestCaseMapper.listByPlanId(request);
         if (testPlanTestCases.isEmpty()) {
             return null;
         }
 
-        TestCaseNodeExample testCaseNodeExample = new TestCaseNodeExample();
-        testCaseNodeExample.createCriteria().andProjectIdEqualTo(projectId);
-        List<TestCaseNode> nodes = testCaseNodeMapper.selectByExample(testCaseNodeExample);
-
         List<String> caseIds = testPlanTestCases.stream()
-                .map(TestPlanTestCase::getCaseId)
+                .map(TestPlanCaseDTO::getCaseId)
                 .collect(Collectors.toList());
 
         TestCaseExample testCaseExample = new TestCaseExample();
@@ -261,93 +374,20 @@ public class TestCaseNodeService {
                 .map(TestCase::getNodeId)
                 .collect(Collectors.toList());
 
-        List<TestCaseNodeDTO> nodeTrees = getNodeTrees(nodes);
-
-        Iterator<TestCaseNodeDTO> iterator = nodeTrees.iterator();
-        while (iterator.hasNext()) {
-            TestCaseNodeDTO rootNode = iterator.next();
-            if (pruningTree(rootNode, dataNodeIds)) {
-                iterator.remove();
-            }
-        }
-
-        return nodeTrees;
-    }
-
-    private List<TestCaseNodeDTO> getReviewNodeDTO(String projectId, List<String> caseIds) {
-
-        if (CollectionUtils.isEmpty(caseIds)) {
-            return null;
-        }
-
-        TestCaseNodeExample testCaseNodeExample = new TestCaseNodeExample();
-        testCaseNodeExample.createCriteria().andProjectIdEqualTo(projectId);
-        List<TestCaseNode> nodes = testCaseNodeMapper.selectByExample(testCaseNodeExample);
-
-
-        TestCaseExample testCaseExample = new TestCaseExample();
-        testCaseExample.createCriteria().andIdIn(caseIds);
-        List<String> dataNodeIds = testCaseMapper.selectByExample(testCaseExample).stream()
-                .map(TestCase::getNodeId)
-                .collect(Collectors.toList());
-
-        List<TestCaseNodeDTO> nodeTrees = getNodeTrees(nodes);
-
-        Iterator<TestCaseNodeDTO> iterator = nodeTrees.iterator();
-        while (iterator.hasNext()) {
-            TestCaseNodeDTO rootNode = iterator.next();
-            if (pruningTree(rootNode, dataNodeIds)) {
-                iterator.remove();
-            }
-        }
-
-        return nodeTrees;
-    }
-
-    /**
-     * 去除没有数据的节点
-     *
-     * @param rootNode
-     * @param nodeIds
-     * @return 是否剪枝
-     */
-    public boolean pruningTree(TestCaseNodeDTO rootNode, List<String> nodeIds) {
-
-        List<TestCaseNodeDTO> children = rootNode.getChildren();
-
-        if (children == null || children.isEmpty()) {
-            //叶子节点,并且该节点无数据
-            if (!nodeIds.contains(rootNode.getId())) {
-                return true;
-            }
-        }
-
-        if (children != null) {
-            Iterator<TestCaseNodeDTO> iterator = children.iterator();
-            while (iterator.hasNext()) {
-                TestCaseNodeDTO subNode = iterator.next();
-                if (pruningTree(subNode, nodeIds)) {
-                    iterator.remove();
-                }
-            }
-
-            if (children.isEmpty() && !nodeIds.contains(rootNode.getId())) {
-                return true;
-            }
-        }
-
-        return false;
+        return getNodeTreeWithPruningTree(projectId, dataNodeIds);
     }
 
     public List<TestCaseNodeDTO> getAllNodeByPlanId(QueryNodeRequest request) {
         String planId = request.getTestPlanId();
-        String projectId = request.getProjectId();
         TestPlan testPlan = testPlanMapper.selectByPrimaryKey(planId);
         if (testPlan == null) {
             return Collections.emptyList();
         }
+        return getAllNodeByProjectId(request);
+    }
 
-        return getNodeTreeByProjectId(projectId);
+    public List<TestCaseNodeDTO> getAllNodeByProjectId(QueryNodeRequest request) {
+        return getNodeTreeByProjectId(request.getProjectId());
     }
 
     public List<TestCaseNodeDTO> getAllNodeByReviewId(QueryNodeRequest request) {
@@ -379,7 +419,7 @@ public class TestCaseNodeService {
             List<String> nodeNameList = new ArrayList<>(Arrays.asList(item.split("/")));
             Iterator<String> itemIterator = nodeNameList.iterator();
             Boolean hasNode = false;
-            String rootNodeName = null;
+            String rootNodeName;
 
             if (nodeNameList.size() <= 1) {
                 throw new ExcelException(Translator.get("test_case_create_module_fail") + ":" + item);
@@ -394,7 +434,6 @@ public class TestCaseNodeService {
                         createNodeByPathIterator(itemIterator, "/" + rootNodeName, nodeTree,
                                 pathMap, projectId, 2);
                     }
-                    ;
                 }
             }
             if (!hasNode) {
@@ -405,86 +444,8 @@ public class TestCaseNodeService {
 
     }
 
-    /**
-     * 根据目标节点路径，创建相关节点
-     *
-     * @param pathIterator 遍历子路径
-     * @param path         当前路径
-     * @param treeNode     当前节点
-     * @param pathMap      记录节点路径对应的nodeId
-     */
-    private void createNodeByPathIterator(Iterator<String> pathIterator, String path, TestCaseNodeDTO treeNode,
-                                          Map<String, String> pathMap, String projectId, Integer level) {
-
-        List<TestCaseNodeDTO> children = treeNode.getChildren();
-
-        if (children == null || children.isEmpty() || !pathIterator.hasNext()) {
-            pathMap.put(path, treeNode.getId());
-            if (pathIterator.hasNext()) {
-                createNodeByPath(pathIterator, pathIterator.next().trim(), treeNode, projectId, level, path, pathMap);
-            }
-            return;
-        }
-
-        String nodeName = pathIterator.next().trim();
-
-        Boolean hasNode = false;
-
-        for (TestCaseNodeDTO child : children) {
-            if (StringUtils.equals(nodeName, child.getName())) {
-                hasNode = true;
-                createNodeByPathIterator(pathIterator, path + "/" + child.getName(),
-                        child, pathMap, projectId, level + 1);
-            }
-            ;
-        }
-
-        //若子节点中不包含该目标节点，则在该节点下创建
-        if (!hasNode) {
-            createNodeByPath(pathIterator, nodeName, treeNode, projectId, level, path, pathMap);
-        }
-
-    }
-
-    /**
-     * @param pathIterator 迭代器，遍历子节点
-     * @param nodeName     当前节点
-     * @param pNode        父节点
-     */
-    private void createNodeByPath(Iterator<String> pathIterator, String nodeName,
-                                  TestCaseNodeDTO pNode, String projectId, Integer level,
-                                  String rootPath, Map<String, String> pathMap) {
-
-        StringBuilder path = new StringBuilder(rootPath);
-
-        path.append("/" + nodeName);
-
-        String pid = null;
-        //创建过不创建
-        if (pathMap.get(path.toString()) != null) {
-            pid = pathMap.get(path.toString());
-            level++;
-        } else {
-            pid = insertTestCaseNode(nodeName, pNode == null ? null : pNode.getId(), projectId, level);
-            pathMap.put(path.toString(), pid);
-            level++;
-        }
-
-        while (pathIterator.hasNext()) {
-            String nextNodeName = pathIterator.next();
-            path.append("/" + nextNodeName);
-            if (pathMap.get(path.toString()) != null) {
-                pid = pathMap.get(path.toString());
-                level++;
-            } else {
-                pid = insertTestCaseNode(nextNodeName, pid, projectId, level);
-                pathMap.put(path.toString(), pid);
-                level++;
-            }
-        }
-    }
-
-    private String insertTestCaseNode(String nodeName, String pId, String projectId, Integer level) {
+    @Override
+    public String insertNode(String nodeName, String pId, String projectId, Integer level) {
         TestCaseNode testCaseNode = new TestCaseNode();
         testCaseNode.setName(nodeName.trim());
         testCaseNode.setParentId(pId);
@@ -492,6 +453,7 @@ public class TestCaseNodeService {
         testCaseNode.setCreateTime(System.currentTimeMillis());
         testCaseNode.setUpdateTime(System.currentTimeMillis());
         testCaseNode.setLevel(level);
+        testCaseNode.setCreateUser(SessionUtils.getUserId());
         testCaseNode.setId(UUID.randomUUID().toString());
         double pos = getNextLevelPos(projectId, level, pId);
         testCaseNode.setPos(pos);
@@ -508,6 +470,10 @@ public class TestCaseNodeService {
         List<TestCaseDTO> testCases = QueryTestCaseByNodeIds(nodeIds);
 
         TestCaseNodeDTO nodeTree = request.getNodeTree();
+
+        if (nodeTree == null) {
+            return;
+        }
 
         List<TestCaseNode> updateNodes = new ArrayList<>();
 
@@ -529,20 +495,29 @@ public class TestCaseNodeService {
             testCaseNodeMapper.updateByPrimaryKeySelective(value);
         });
         sqlSession.flushStatements();
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
     }
 
     private void batchUpdateTestCase(List<TestCaseDTO> testCases) {
         SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
         TestCaseMapper testCaseMapper = sqlSession.getMapper(TestCaseMapper.class);
         testCases.forEach((value) -> {
-            testCaseMapper.updateByPrimaryKey(value);
+            testCaseMapper.updateByPrimaryKeySelective(value);
         });
         sqlSession.flushStatements();
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
     }
 
     private List<TestCaseDTO> QueryTestCaseByNodeIds(List<String> nodeIds) {
         QueryTestCaseRequest testCaseRequest = new QueryTestCaseRequest();
         testCaseRequest.setNodeIds(nodeIds);
+        if(testCaseRequest.getFilters()!=null && !testCaseRequest.getFilters().containsKey("status")){
+            testCaseRequest.getFilters().put("status",new ArrayList<>(0));
+        }
         return extTestCaseMapper.list(testCaseRequest);
     }
 
@@ -555,11 +530,13 @@ public class TestCaseNodeService {
             MSException.throwException(Translator.get("node_deep_limit"));
         }
 
-        TestCaseNode testCaseNode = new TestCaseNode();
-        testCaseNode.setId(rootNode.getId());
-        testCaseNode.setLevel(level);
-        testCaseNode.setParentId(pId);
-        updateNodes.add(testCaseNode);
+        if (updateNodes != null) {
+            TestCaseNode testCaseNode = new TestCaseNode();
+            testCaseNode.setId(rootNode.getId());
+            testCaseNode.setLevel(level);
+            testCaseNode.setParentId(pId);
+            updateNodes.add(testCaseNode);
+        }
 
         for (TestCaseDTO item : testCases) {
             if (StringUtils.equals(item.getNodeId(), rootNode.getId())) {
@@ -587,51 +564,14 @@ public class TestCaseNodeService {
         return testCaseNodeMapper.selectByPrimaryKey(id);
     }
 
+    @Override
+    public TestCaseNodeDTO getNode(String id) {
+        return extTestCaseNodeMapper.get(id);
+    }
 
-    /**
-     * 测试用例同级模块排序
-     *
-     * @param ids 被拖拽模块相邻的前一个模块 id，
-     *            被拖拽的模块 id，
-     *            被拖拽模块相邻的后一个模块 id
-     */
-    public void sort(List<String> ids) {
-        // 获取相邻节点 id
-        String before = ids.get(0);
-        String id = ids.get(1);
-        String after = ids.get(2);
-
-        TestCaseNode beforeCase = null;
-        TestCaseNode afterCase = null;
-
-        TestCaseNode caseNode = getCaseNode(id);
-
-        // 获取相邻节点
-        if (StringUtils.isNotBlank(before)) {
-            beforeCase = getCaseNode(before);
-            beforeCase = beforeCase.getLevel().equals(caseNode.getLevel()) ? beforeCase : null;
-        }
-
-        if (StringUtils.isNotBlank(after)) {
-            afterCase = getCaseNode(after);
-            afterCase = afterCase.getLevel().equals(caseNode.getLevel()) ? afterCase : null;
-        }
-
-        double pos;
-
-        if (beforeCase == null) {
-            pos = afterCase != null ? afterCase.getPos() / 2.0 : 65536;
-        } else {
-            pos = afterCase != null ? (beforeCase.getPos() + afterCase.getPos()) / 2.0 : beforeCase.getPos() + 65536;
-        }
-
-        caseNode.setPos(pos);
-        testCaseNodeMapper.updateByPrimaryKeySelective(caseNode);
-
-        // pos 低于阈值时，触发更新方法，重新计算此目录的所有同级目录的 pos 值
-        if (pos < LIMIT_POS) {
-            refreshPos(caseNode.getProjectId(), caseNode.getLevel(), caseNode.getParentId());
-        }
+    @Override
+    public void updatePos(String id, Double pos) {
+        extTestCaseNodeMapper.updatePos(id, pos);
     }
 
     /**
@@ -661,17 +601,21 @@ public class TestCaseNodeService {
      * @param level     node level
      * @param parentId  node parent id
      */
-    private void refreshPos(String projectId, int level, String parentId) {
+    @Override
+    protected void refreshPos(String projectId, int level, String parentId) {
         List<TestCaseNode> nodes = getPos(projectId, level, parentId, "pos asc");
         if (!CollectionUtils.isEmpty(nodes)) {
             SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
             TestCaseNodeMapper testCaseNodeMapper = sqlSession.getMapper(TestCaseNodeMapper.class);
-            AtomicDouble pos = new AtomicDouble(65536);
+            AtomicDouble pos = new AtomicDouble(DEFAULT_POS);
             nodes.forEach((node) -> {
-                node.setPos(pos.getAndAdd(65536));
+                node.setPos(pos.getAndAdd(DEFAULT_POS));
                 testCaseNodeMapper.updateByPrimaryKey(node);
             });
             sqlSession.flushStatements();
+            if (sqlSession != null && sqlSessionFactory != null) {
+                SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+            }
         }
     }
 
@@ -687,10 +631,113 @@ public class TestCaseNodeService {
     private double getNextLevelPos(String projectId, int level, String parentId) {
         List<TestCaseNode> list = getPos(projectId, level, parentId, "pos desc");
         if (!CollectionUtils.isEmpty(list) && list.get(0) != null && list.get(0).getPos() != null) {
-            return list.get(0).getPos() + 65536;
+            return list.get(0).getPos() + DEFAULT_POS;
         } else {
-            return 65536;
+            return DEFAULT_POS;
         }
     }
 
+
+    public String getLogDetails(List<String> ids) {
+        TestCaseNodeExample example = new TestCaseNodeExample();
+        example.createCriteria().andIdIn(ids);
+        List<TestCaseNode> nodes = testCaseNodeMapper.selectByExample(example);
+        if (org.apache.commons.collections.CollectionUtils.isNotEmpty(nodes)) {
+            List<String> names = nodes.stream().map(TestCaseNode::getName).collect(Collectors.toList());
+            OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(ids), nodes.get(0).getProjectId(), String.join(",", names), nodes.get(0).getCreateUser(), new LinkedList<>());
+            return JSON.toJSONString(details);
+        }
+        return null;
+    }
+
+    public String getLogDetails(TestCaseNode node) {
+        TestCaseNode module = null;
+        if (StringUtils.isNotEmpty(node.getId())) {
+            module = testCaseNodeMapper.selectByPrimaryKey(node.getId());
+        }
+        if (module == null && StringUtils.isNotEmpty(node.getName())) {
+            TestCaseNodeExample example = new TestCaseNodeExample();
+            TestCaseNodeExample.Criteria criteria = example.createCriteria();
+            criteria.andNameEqualTo(node.getName()).andProjectIdEqualTo(node.getProjectId());
+            if (StringUtils.isNotEmpty(node.getParentId())) {
+                criteria.andParentIdEqualTo(node.getParentId());
+            } else {
+                criteria.andParentIdIsNull();
+            }
+            if (StringUtils.isNotEmpty(node.getId())) {
+                criteria.andIdNotEqualTo(node.getId());
+            }
+            List<TestCaseNode> list = testCaseNodeMapper.selectByExample(example);
+            if (org.apache.commons.collections.CollectionUtils.isNotEmpty(list)) {
+                module = list.get(0);
+            }
+        }
+        if (module != null) {
+            List<DetailColumn> columns = ReflexObjectUtil.getColumns(module, ModuleReference.moduleColumns);
+            OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(module.getId()), module.getProjectId(), module.getCreateUser(), columns);
+            return JSON.toJSONString(details);
+        }
+        return null;
+    }
+
+    public long countById(String nodeId) {
+        TestCaseNodeExample example = new TestCaseNodeExample();
+        example.createCriteria().andIdEqualTo(nodeId);
+        return testCaseNodeMapper.countByExample(example);
+    }
+
+    public LinkedList<TestCaseNode> getPathNodeById(String moduleId) {
+        TestCaseNode testCaseNode = testCaseNodeMapper.selectByPrimaryKey(moduleId);
+        LinkedList<TestCaseNode> returnList = new LinkedList<>();
+
+        while (testCaseNode != null) {
+            returnList.addFirst(testCaseNode);
+            if (testCaseNode.getParentId() == null) {
+                testCaseNode = null;
+            } else {
+                testCaseNode = testCaseNodeMapper.selectByPrimaryKey(testCaseNode.getParentId());
+            }
+        }
+        return returnList;
+    }
+
+    public long trashCount(String projectId) {
+        return extTestCaseMapper.trashCount(projectId);
+    }
+
+    public void minderEdit(TestCaseMinderEditRequest request) {
+        deleteNode(request.getIds());
+
+        List<TestCaseMinderEditRequest.TestCaseNodeMinderEditItem> testCaseNodes = request.getTestCaseNodes();
+        List<String> editNodeIds = new ArrayList<>();
+
+        if (org.apache.commons.collections.CollectionUtils.isNotEmpty(testCaseNodes)) {
+
+            for (TestCaseMinderEditRequest.TestCaseNodeMinderEditItem item: testCaseNodes) {
+                if (StringUtils.isBlank(item.getParentId()) || item.getParentId().equals("root")) {
+                    item.setParentId(null);
+                }
+                item.setProjectId(request.getProjectId());
+                if (item.getIsEdit()) {
+                    DragNodeRequest editNode = new DragNodeRequest();
+                    BeanUtils.copyBean(editNode, item);
+                    checkTestCaseNodeExist(editNode);
+                    editNodeIds.add(editNode.getId());
+                    testCaseNodeMapper.updateByPrimaryKeySelective(editNode);
+                } else {
+                    TestCaseNode testCaseNode = new TestCaseNode();
+                    BeanUtils.copyBean(testCaseNode, item);
+                    testCaseNode.setProjectId(request.getProjectId());
+                    addNode(testCaseNode);
+                }
+            }
+
+            editCasePathForMinder(editNodeIds, request.getProjectId());
+        }
+    }
+
+    public long publicCount(String workSpaceId) {
+
+        return extTestCaseMapper.countByWorkSpaceId(workSpaceId);
+    }
 }

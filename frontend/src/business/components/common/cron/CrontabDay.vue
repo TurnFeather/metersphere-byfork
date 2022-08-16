@@ -23,8 +23,8 @@
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="4">
         {{$t('schedule.cron.from')}}
-				<el-input-number v-model='average01' :min="0" :max="31" /> {{$t('schedule.cron.day_unit')}}{{$t('schedule.cron.start')}}，{{$t('schedule.cron.every')}}
-				<el-input-number v-model='average02' :min="0" :max="31" /> {{$t('schedule.cron.day')}}{{$t('schedule.cron.execute_once')}}
+				<el-input-number v-model='average01' :min="1" :max="31" /> {{$t('schedule.cron.day_unit')}}{{$t('schedule.cron.start')}}，{{$t('schedule.cron.every')}}
+				<el-input-number v-model='average02' :min="1" :max="31" /> {{$t('schedule.cron.day')}}{{$t('schedule.cron.execute_once')}}
 			</el-radio>
 		</el-form-item>
 
@@ -75,18 +75,19 @@ export default {
 			if (this.radioValue === 1) {
 				this.$emit('update', 'day', '*', 'day');
 				this.$emit('update', 'week', '?', 'day');
-				this.$emit('update', 'mouth', '*', 'day');
-			} else {
-				if (this.cron.hour === '*') {
-					this.$emit('update', 'hour', '0', 'day');
-				}
-				if (this.cron.min === '*') {
-					this.$emit('update', 'min', '0', 'day');
-				}
-				if (this.cron.second === '*') {
-					this.$emit('update', 'second', '0', 'day');
-				}
+				// this.$emit('update', 'mouth', '*', 'day');
 			}
+			// else {
+			// 	if (this.cron.hour === '*') {
+			// 		this.$emit('update', 'hour', '0', 'day');
+			// 	}
+			// 	if (this.cron.min === '*') {
+			// 		this.$emit('update', 'min', '0', 'day');
+			// 	}
+			// 	if (this.cron.second === '*') {
+			// 		this.$emit('update', 'second', '0', 'day');
+			// 	}
+			// }
 
 			switch (this.radioValue) {
 				case 2:
